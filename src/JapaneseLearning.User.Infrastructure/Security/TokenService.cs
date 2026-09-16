@@ -92,16 +92,19 @@ public sealed class TokenService : ITokenService
                 key,
                 SecurityAlgorithms.HmacSha256);
 
-        var token = new JwtSecurityToken(
-            issuer: _options.Issuer,
-            audience: _options.Audience,
-            claims: claims,
-            expires: DateTime.UtcNow.AddMinutes(
+        // Use the standard outbound mapping, including ClaimTypes.Role -> role.
+        var handler = new JwtSecurityTokenHandler();
+        var token = handler.CreateToken(new SecurityTokenDescriptor
+        {
+            Issuer = _options.Issuer,
+            Audience = _options.Audience,
+            Subject = new ClaimsIdentity(claims),
+            Expires = DateTime.UtcNow.AddMinutes(
                 _options.AccessTokenExpirationMinutes),
-            signingCredentials: credentials);
+            SigningCredentials = credentials
+        });
 
-        return new JwtSecurityTokenHandler()
-            .WriteToken(token);
+        return handler.WriteToken(token);
     }
 
     private static string GenerateRefreshToken()
