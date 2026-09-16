@@ -182,6 +182,31 @@ unchanged. Restart the service after replacing key files or changing key metadat
 Previously issued HS256 access tokens are rejected; clients can obtain RS256
 access tokens through login or an existing valid refresh token.
 
+### Public signing key (JWKS)
+
+`GET /.well-known/jwks.json` is anonymous and returns one RSA public signing key
+in a standard `keys` array. Its fields are `kty: RSA`, `use: sig`, `alg: RS256`,
+`kid`, `n`, and `e`. The key ID matches newly issued JWT headers. Modulus `n` and
+exponent `e` use unpadded Base64Url encoding.
+
+The endpoint reuses the in-memory public validation key loaded at startup. It
+does not read PEM files per request or expose private parameters, paths, or other
+configuration. No additional configuration is required. This is a JWKS endpoint;
+OpenID Connect discovery and key rotation are not implemented.
+
+With the HTTPS development profile running, fetch it without Authorization:
+
+```powershell
+Invoke-RestMethod https://localhost:7066/.well-known/jwks.json | ConvertTo-Json -Depth 3
+```
+
+Log in using the existing API and compare the access-token header `kid` with the
+returned key's `kid`. A verifier can Base64Url-decode `n` and `e` into the RSA
+modulus and exponent and verify the RS256 signature, while still enforcing the
+expected issuer, audience, and lifetime. `JwksEndpointTests` automates this check
+over HTTP using the production key loader and TokenService with the existing
+temporary test-key fixture.
+
 ### Manual authentication check
 
 1. Configure the existing database connection and make the parent-owned PEM files
