@@ -130,6 +130,29 @@ public sealed class JwtContractTests
     }
 
     [Fact]
+    public async Task PreviouslyIssuedDotNetRoleClaimRemainsSupported()
+    {
+        var options = CreateOptions();
+        using var provider = CreateProvider(options);
+        var token = new JwtSecurityToken(
+            issuer: options.Issuer,
+            audience: options.Audience,
+            claims:
+            [
+                new Claim(JwtRegisteredClaimNames.Sub, UserId.ToString()),
+                new Claim(ClaimTypes.Role, "User")
+            ],
+            expires: DateTime.UtcNow.AddMinutes(15),
+            signingCredentials: new SigningCredentials(
+                new SymmetricSecurityKey(Encoding.UTF8.GetBytes(Secret)),
+                SecurityAlgorithms.HmacSha256));
+        var result = await Authenticate(provider, new JwtSecurityTokenHandler().WriteToken(token));
+
+        Assert.True(result.Succeeded);
+        Assert.True(result.Principal!.IsInRole("User"));
+    }
+
+    [Fact]
     public void MissingHttpContextIsUnauthenticated()
     {
         var currentUser = new CurrentUser(new HttpContextAccessor());

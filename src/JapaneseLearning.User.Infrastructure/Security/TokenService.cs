@@ -93,7 +93,10 @@ public sealed class TokenService : ITokenService
                 SecurityAlgorithms.HmacSha256);
 
         // Use the standard outbound mapping, including ClaimTypes.Role -> role.
-        var handler = new JwtSecurityTokenHandler();
+        var handler = new JwtSecurityTokenHandler
+        {
+            SetDefaultTimesOnTokenCreation = false
+        };
         var token = handler.CreateToken(new SecurityTokenDescriptor
         {
             Issuer = _options.Issuer,
