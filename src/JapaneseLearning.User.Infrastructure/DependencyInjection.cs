@@ -29,11 +29,14 @@ public static class DependencyInjection
             .AddOptions<JwtOptions>()
             .Bind(configuration.GetSection(JwtOptions.SectionName))
             .Validate(
-                options => !string.IsNullOrWhiteSpace(options.Secret),
-                "JWT secret is missing or empty.")
+                options => !string.IsNullOrWhiteSpace(options.PrivateKeyPath),
+                "JWT private key path is missing or empty.")
             .Validate(
-                options => options.Secret.Length >= 32,
-                "JWT secret must be at least 32 characters.")
+                options => !string.IsNullOrWhiteSpace(options.PublicKeyPath),
+                "JWT public key path is missing or empty.")
+            .Validate(
+                options => !string.IsNullOrWhiteSpace(options.KeyId),
+                "JWT key ID is missing or empty.")
             .Validate(
                 options => !string.IsNullOrWhiteSpace(options.Issuer),
                 "JWT issuer is missing or empty.")
@@ -53,6 +56,8 @@ public static class DependencyInjection
 
         services.AddScoped<IPasswordHasher, PasswordHasher>();
 
+        services.AddSingleton<JwtRsaKeys>();
+        services.AddHostedService(provider => provider.GetRequiredService<JwtRsaKeys>());
         services.AddSingleton<ITokenService, TokenService>();
 
         services.AddScoped<ICurrentUser, CurrentUser>();

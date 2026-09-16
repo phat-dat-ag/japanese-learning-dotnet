@@ -23,7 +23,7 @@ builder.Services.AddApplication();
 builder.Services.AddInfrastructure(
     builder.Configuration);
 
-builder.Services.AddJwtAuthentication(builder.Configuration);
+builder.Services.AddJwtAuthentication();
 
 builder.Services.AddAuthorization();
 

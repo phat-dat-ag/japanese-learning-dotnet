@@ -126,6 +126,93 @@ echo %Database__ConnectionString%
 
 ---
 
+## JWT RSA Configuration
+
+Access tokens use RS256. The parent orchestration repository owns the RSA key
+pair; this service only reads PEM files. Do not copy or commit key material here.
+
+Configure these settings through the existing `Jwt` options section (JSON,
+environment variables, or .NET user secrets):
+
+| Setting | Purpose |
+| --- | --- |
+| `Jwt:PrivateKeyPath` | Unencrypted RSA private PEM file used to sign access tokens |
+| `Jwt:PublicKeyPath` | Corresponding RSA public PEM file used to validate access tokens |
+| `Jwt:KeyId` | Non-empty identifier emitted as the JWT header `kid` |
+| `Jwt:Issuer` | Expected issuer; default `JapaneseLearning.User` |
+| `Jwt:Audience` | Expected audience; default `JapaneseLearning` |
+| `Jwt:AccessTokenExpirationMinutes` | Positive access-token lifetime; default 15 |
+| `Jwt:RefreshTokenExpirationDays` | Existing refresh-token lifetime; unchanged, default 7 |
+
+`Jwt:Secret` is no longer used. Base settings leave key paths and ID empty so a
+non-development deployment must supply them. Development settings use
+`../../../secrets/jwt/private.pem`, `../../../secrets/jwt/public.pem`, and key ID
+`japanese-learning-local-1`. Relative paths are resolved against the application's
+content root (`src/JapaneseLearning.User.Api` during normal local development),
+not the process working directory. With the current checkout these resolve to:
+
+- `C:\Personal\japanese-learning\secrets\jwt\private.pem`
+- `C:\Personal\japanese-learning\secrets\jwt\public.pem`
+
+For a different content root or deployment layout, override the paths. For example,
+container environment variables can point directly to mounted files:
+
+```text
+Jwt__PrivateKeyPath=/run/secrets/jwt-private.pem
+Jwt__PublicKeyPath=/run/secrets/jwt-public.pem
+Jwt__KeyId=japanese-learning-1
+Jwt__Issuer=JapaneseLearning.User
+Jwt__Audience=JapaneseLearning
+Jwt__AccessTokenExpirationMinutes=15
+```
+
+The application identity must be able to read both files. The loader reads them
+asynchronously once during startup and imports PEM with `RSA.ImportFromPem`.
+PKCS#8/PKCS#1 private keys and SubjectPublicKeyInfo/PKCS#1 public keys are supported.
+Keys must be at least 2048 bits and form a matching pair. Missing paths or key ID,
+unreadable files, invalid/encrypted PEM, and mismatched keys fail startup with an
+options/configuration error. Errors do not include PEM contents.
+
+Signing uses private RSA parameters and sets `RsaSecurityKey.KeyId`; the JWT
+handler writes that value to `kid`. Bearer authentication receives only public
+parameters and allows only RS256, retaining signature, issuer, audience, and
+lifetime checks with zero clock skew. Claims and .NET name/role mapping are
+unchanged. Refresh-token generation, hashing, persistence, and rotation are
+unchanged. Restart the service after replacing key files or changing key metadata.
+Previously issued HS256 access tokens are rejected; clients can obtain RS256
+access tokens through login or an existing valid refresh token.
+
+### Manual authentication check
+
+1. Configure the existing database connection and make the parent-owned PEM files
+   readable. Run `dotnet run --project src/JapaneseLearning.User.Api --launch-profile https`.
+   If another instance occupies its ports or locks Debug outputs, stop that instance first.
+2. Open `https://localhost:7066/swagger`. Register a test account with
+   `POST /api/auth/register` (`username`, `email`, `password`), then log in with
+   `POST /api/auth/login` (`email`, `password`).
+3. Inspect the access token locally: header `alg` must be `RS256`, `kid` must match
+   configuration, and payload must retain `sub`, `unique_name`, `email`, `role`,
+   `jti`, `exp`, `iss`, and `aud`. Log in again and check that `jti` differs.
+4. Use Swagger's Authorize control with the access token. `GET /api/auth/me`
+   should return the authenticated account. `GET /api/auth/admin-test` should
+   return 403 for a User and 200 for an existing Admin account.
+5. Call `POST /api/auth/refresh` with `{ "refreshToken": "<refresh token>" }`.
+   Verify the new access token works for `/me`, and the rotated-out refresh token
+   is rejected. Call `POST /api/auth/logout` with the new refresh token; subsequent
+   refresh with that token should fail. Logout preserves the existing behavior:
+   an access token already issued remains valid until expiration.
+6. An altered or expired access token must return 401 from `/me`. To check expiry
+   quickly, set `Jwt__AccessTokenExpirationMinutes=1`, restart, log in, and retry
+   after expiry. Automated tests additionally check wrong issuer, audience, key,
+   unsigned tokens, missing expiration, and disallowed algorithms.
+7. Set either key path to a nonexistent file and restart: startup must fail before
+   requests are served. Restore configuration afterward.
+
+The RSA tests use disposable keys in the operating system's temporary directory;
+they do not read, replace, or generate deployment keys in this repository.
+
+---
+
 ## Database Requirements
 
 The application expects the following database:

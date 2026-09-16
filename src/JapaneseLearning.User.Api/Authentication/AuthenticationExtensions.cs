@@ -1,5 +1,6 @@
 using System.Security.Claims;
-using System.Text;
+using JapaneseLearning.User.Infrastructure.Security;
+using Microsoft.Extensions.Options;
 using JapaneseLearning.User.Infrastructure.Configuration;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
@@ -9,18 +10,16 @@ namespace JapaneseLearning.User.Api.Authentication;
 public static class AuthenticationExtensions
 {
     public static IServiceCollection AddJwtAuthentication(
-        this IServiceCollection services,
-        IConfiguration configuration)
+        this IServiceCollection services)
     {
-        var jwtOptions = configuration
-            .GetSection(JwtOptions.SectionName)
-            .Get<JwtOptions>()
-            ?? throw new InvalidOperationException("JWT configuration is missing.");
-
         services
             .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-            .AddJwtBearer(options =>
+            .AddJwtBearer();
+
+        services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)
+            .Configure<IOptions<JwtOptions>, JwtRsaKeys>((options, configuredOptions, keys) =>
             {
+                var jwtOptions = configuredOptions.Value;
                 // Map sub, unique_name, email and role to the standard .NET claim types.
                 options.MapInboundClaims = true;
                 options.TokenValidationParameters = new TokenValidationParameters
@@ -33,9 +32,8 @@ public static class AuthenticationExtensions
                     RequireExpirationTime = true,
                     RequireSignedTokens = true,
                     ValidateIssuerSigningKey = true,
-                    IssuerSigningKey = new SymmetricSecurityKey(
-                        Encoding.UTF8.GetBytes(jwtOptions.Secret)),
-                    ValidAlgorithms = [SecurityAlgorithms.HmacSha256],
+                    IssuerSigningKey = keys.ValidationKey,
+                    ValidAlgorithms = [SecurityAlgorithms.RsaSha256],
                     NameClaimType = ClaimTypes.Name,
                     RoleClaimType = ClaimTypes.Role,
                     ClockSkew = TimeSpan.Zero

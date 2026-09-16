@@ -13,11 +13,14 @@ namespace JapaneseLearning.User.Infrastructure.Security;
 public sealed class TokenService : ITokenService
 {
     private readonly JwtOptions _options;
+    private readonly JwtRsaKeys _keys;
 
     public TokenService(
-        IOptions<JwtOptions> options)
+        IOptions<JwtOptions> options,
+        JwtRsaKeys keys)
     {
         _options = options.Value;
+        _keys = keys;
     }
 
     public TokenResult CreateTokens(
@@ -84,13 +87,9 @@ public sealed class TokenService : ITokenService
                 Guid.NewGuid().ToString())
         };
 
-        var key = new SymmetricSecurityKey(
-            Encoding.UTF8.GetBytes(_options.Secret));
-
-        var credentials =
-            new SigningCredentials(
-                key,
-                SecurityAlgorithms.HmacSha256);
+        var credentials = new SigningCredentials(
+            _keys.SigningKey,
+            SecurityAlgorithms.RsaSha256);
 
         // Use the standard outbound mapping, including ClaimTypes.Role -> role.
         var handler = new JwtSecurityTokenHandler

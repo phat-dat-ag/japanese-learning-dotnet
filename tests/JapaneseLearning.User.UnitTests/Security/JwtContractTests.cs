@@ -1,6 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
-using System.Text;
+using System.Security.Cryptography;
 using JapaneseLearning.User.Api.Authentication;
 using JapaneseLearning.User.Domain.Users;
 using JapaneseLearning.User.Infrastructure;
@@ -16,11 +16,8 @@ using Microsoft.IdentityModel.Tokens;
 
 namespace JapaneseLearning.User.UnitTests.Security;
 
-public sealed class JwtContractTests
+public sealed class JwtContractTests(RsaKeyFixture fixture) : IClassFixture<RsaKeyFixture>
 {
-    // Test-only keys, unrelated to deployment credentials.
-    private const string Secret = "jwt-contract-test-key-0123456789-abcdef";
-    private const string OtherSecret = "different-test-key-0123456789-abcdefghi";
     private static readonly Guid UserId = Guid.Parse("db3d0876-c533-4ec3-90a2-b78102cb9fe7");
 
     [Theory]
@@ -42,7 +39,8 @@ public sealed class JwtContractTests
         Assert.True(Guid.TryParse(token.Id, out _));
         Assert.Equal(options.Issuer, token.Issuer);
         Assert.Equal(options.Audience, Assert.Single(token.Audiences));
-        Assert.Equal(SecurityAlgorithms.HmacSha256, token.Header.Alg);
+        Assert.Equal(SecurityAlgorithms.RsaSha256, token.Header.Alg);
+        Assert.Equal(options.KeyId, token.Header.Kid);
         Assert.InRange(token.ValidTo, before.AddMinutes(15).AddSeconds(-1), after.AddMinutes(15));
         Assert.Equal(900, result.AccessTokenExpiresIn);
     }
@@ -116,7 +114,7 @@ public sealed class JwtContractTests
     [InlineData("expired", typeof(SecurityTokenExpiredException))]
     [InlineData("issuer", typeof(SecurityTokenInvalidIssuerException))]
     [InlineData("audience", typeof(SecurityTokenInvalidAudienceException))]
-    [InlineData("signature", typeof(SecurityTokenSignatureKeyNotFoundException))]
+    [InlineData("signature", typeof(SecurityTokenInvalidSignatureException))]
     [InlineData("unsigned", typeof(SecurityTokenInvalidSignatureException))]
     [InlineData("expiration", typeof(SecurityTokenNoExpirationException))]
     public async Task InvalidTokensAreRejected(string scenario, Type expectedFailure)
@@ -144,8 +142,8 @@ public sealed class JwtContractTests
             ],
             expires: DateTime.UtcNow.AddMinutes(15),
             signingCredentials: new SigningCredentials(
-                new SymmetricSecurityKey(Encoding.UTF8.GetBytes(Secret)),
-                SecurityAlgorithms.HmacSha256));
+                fixture.Keys.SigningKey,
+                SecurityAlgorithms.RsaSha256));
         var result = await Authenticate(provider, new JwtSecurityTokenHandler().WriteToken(token));
 
         Assert.True(result.Succeeded);
@@ -195,33 +193,82 @@ public sealed class JwtContractTests
         Assert.Contains("JWT access-token lifetime must be positive.", exception.Failures);
     }
 
-    private static JwtOptions CreateOptions() => new()
+    [Theory]
+    [InlineData(SecurityAlgorithms.RsaSha512)]
+    [InlineData(SecurityAlgorithms.RsaSsaPssSha256)]
+    public async Task OtherRsaAlgorithmsAreRejected(string algorithm)
     {
-        Secret = Secret,
+        var options = CreateOptions();
+        using var provider = CreateProvider(options);
+        var token = new JwtSecurityToken(options.Issuer, options.Audience,
+            expires: DateTime.UtcNow.AddMinutes(15),
+            signingCredentials: new SigningCredentials(fixture.Keys.SigningKey, algorithm));
+
+        Assert.False((await Authenticate(provider, new JwtSecurityTokenHandler().WriteToken(token))).Succeeded);
+    }
+
+    [Fact]
+    public async Task LegacySymmetricTokensAreRejected()
+    {
+        var options = CreateOptions();
+        using var provider = CreateProvider(options);
+        var token = new JwtSecurityToken(options.Issuer, options.Audience,
+            expires: DateTime.UtcNow.AddMinutes(15),
+            signingCredentials: new SigningCredentials(
+                new SymmetricSecurityKey(RandomNumberGenerator.GetBytes(32)) { KeyId = options.KeyId },
+                SecurityAlgorithms.HmacSha256));
+
+        Assert.False((await Authenticate(provider, new JwtSecurityTokenHandler().WriteToken(token))).Succeeded);
+    }
+
+    [Fact]
+    public void RefreshTokenGenerationAndHashingRemainUnchanged()
+    {
+        var service = CreateService(CreateOptions());
+        var before = DateTime.UtcNow;
+        var first = service.CreateTokens(UserId, "learner", "learner@example.com", UserRole.User);
+        var second = service.CreateTokens(UserId, "learner", "learner@example.com", UserRole.User);
+
+        Assert.Equal(64, Convert.FromBase64String(first.RefreshToken).Length);
+        Assert.NotEqual(first.RefreshToken, second.RefreshToken);
+        Assert.InRange(first.RefreshTokenExpiresAt, before.AddDays(7), DateTime.UtcNow.AddDays(7));
+        Assert.Equal(Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(first.RefreshToken))),
+            service.HashRefreshToken(first.RefreshToken));
+    }
+
+    private JwtOptions CreateOptions() => new()
+    {
+        PrivateKeyPath = fixture.PrivateKeyPath,
+        PublicKeyPath = fixture.PublicKeyPath,
+        KeyId = RsaKeyFixture.KeyId,
         Issuer = "JapaneseLearning.User",
         Audience = "JapaneseLearning",
         AccessTokenExpirationMinutes = 15,
         RefreshTokenExpirationDays = 7
     };
 
-    private static TokenService CreateService(JwtOptions options) =>
-        new(Options.Create(options));
+    private TokenService CreateService(JwtOptions options) =>
+        new(Options.Create(options), fixture.Keys);
 
     private static IConfiguration CreateConfiguration(JwtOptions options) =>
         new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
-            ["Jwt:Secret"] = options.Secret,
+            ["Jwt:PrivateKeyPath"] = options.PrivateKeyPath,
+            ["Jwt:PublicKeyPath"] = options.PublicKeyPath,
+            ["Jwt:KeyId"] = options.KeyId,
             ["Jwt:Issuer"] = options.Issuer,
             ["Jwt:Audience"] = options.Audience,
             ["Jwt:AccessTokenExpirationMinutes"] = options.AccessTokenExpirationMinutes.ToString(),
             ["Jwt:RefreshTokenExpirationDays"] = options.RefreshTokenExpirationDays.ToString()
         }).Build();
 
-    private static ServiceProvider CreateProvider(JwtOptions options)
+    private ServiceProvider CreateProvider(JwtOptions options)
     {
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddJwtAuthentication(CreateConfiguration(options));
+        services.AddInfrastructure(CreateConfiguration(options));
+        services.AddSingleton(fixture.Keys);
+        services.AddJwtAuthentication();
         services.AddAuthorization();
         return services.BuildServiceProvider();
     }
@@ -235,11 +282,14 @@ public sealed class JwtContractTests
         return await context.AuthenticateAsync();
     }
 
-    private static string CreateInvalidToken(string scenario)
+    private string CreateInvalidToken(string scenario)
     {
         var options = CreateOptions();
         var now = DateTime.UtcNow;
-        var key = scenario == "signature" ? OtherSecret : Secret;
+        using var otherRsa = RSA.Create(2048);
+        var key = scenario == "signature"
+            ? new RsaSecurityKey(otherRsa) { KeyId = options.KeyId }
+            : fixture.Keys.SigningKey;
         var token = new JwtSecurityToken(
             issuer: scenario == "issuer" ? "Wrong.Issuer" : options.Issuer,
             audience: scenario == "audience" ? "Wrong.Audience" : options.Audience,
@@ -253,8 +303,8 @@ public sealed class JwtContractTests
                 scenario == "expired" ? now.AddMinutes(-1) : now.AddMinutes(15),
             signingCredentials: scenario == "unsigned" ? null :
                 new SigningCredentials(
-                    new SymmetricSecurityKey(Encoding.UTF8.GetBytes(key)),
-                    SecurityAlgorithms.HmacSha256));
+                    key,
+                    SecurityAlgorithms.RsaSha256));
 
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
