@@ -40,6 +40,9 @@ public static class DependencyInjection
             .Validate(
                 options => !string.IsNullOrWhiteSpace(options.Audience),
                 "JWT audience is missing or empty.")
+            .Validate(
+                options => options.AccessTokenExpirationMinutes > 0,
+                "JWT access-token lifetime must be positive.")
             .ValidateOnStart();
 
         services.AddSingleton<ISqlConnectionFactory, SqlConnectionFactory>();
