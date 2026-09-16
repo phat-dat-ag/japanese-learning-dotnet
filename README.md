@@ -158,8 +158,8 @@ For a different content root or deployment layout, override the paths. For examp
 container environment variables can point directly to mounted files:
 
 ```text
-Jwt__PrivateKeyPath=/run/secrets/jwt-private.pem
-Jwt__PublicKeyPath=/run/secrets/jwt-public.pem
+Jwt__PrivateKeyPath=/app/secrets/jwt/private.pem
+Jwt__PublicKeyPath=/app/secrets/jwt/public.pem
 Jwt__KeyId=japanese-learning-1
 Jwt__Issuer=JapaneseLearning.User
 Jwt__Audience=JapaneseLearning
@@ -235,6 +235,56 @@ temporary test-key fixture.
 
 The RSA tests use disposable keys in the operating system's temporary directory;
 they do not read, replace, or generate deployment keys in this repository.
+
+---
+
+## Container
+
+Build the Linux image from this repository root:
+
+```bash
+docker build -t japanese-learning-user:local .
+```
+
+The image uses official .NET 9 SDK restore/build/publish stages and an ASP.NET
+Core 9 runtime stage containing only published API output. It runs as the
+image's non-root `app` user (`APP_UID`, UID 1654), in Production, listening on
+HTTP port **8080** on all interfaces. Publish that port through orchestration.
+`Http__RedirectToHttps=false` disables application HTTPS redirection in this
+image; TLS belongs at the gateway. Other deployments retain redirection by default.
+
+Supply configuration at runtime using standard ASP.NET Core environment variables:
+
+| Variable | Value |
+| --- | --- |
+| `Database__ConnectionString` | SQL Server connection string using a hostname reachable from the container, not `localhost` |
+| `Jwt__Issuer` | Expected token issuer |
+| `Jwt__Audience` | Expected token audience |
+| `Jwt__PrivateKeyPath` | `/app/secrets/jwt/private.pem` |
+| `Jwt__PublicKeyPath` | `/app/secrets/jwt/public.pem` |
+| `Jwt__KeyId` | Signing key ID shared with verifiers |
+| `Jwt__AccessTokenExpirationMinutes` | Positive lifetime in minutes (default 15) |
+
+Issuer and audience retain the defaults documented above if omitted.
+`Jwt__RefreshTokenExpirationDays` can also override the existing default of 7.
+Do not supply credentials or key contents as image build arguments.
+
+The root orchestration repository owns `secrets/jwt/private.pem` and
+`secrets/jwt/public.pem`. Mount them read-only at the corresponding `/app/secrets/jwt/`
+paths above and grant UID 1654 read access and directory traversal permissions.
+Never copy or generate deployment keys in this repository or during the image build.
+The build context excludes PEM files, secret directories, and local configuration.
+Restart the container after replacing keys; existing startup validation and RS256
+validation remain enforced. The public key is available at `GET /.well-known/jwks.json`.
+
+The existing anonymous `GET /health` checks SQL Server connectivity: HTTP 200
+when healthy, HTTP 503 when unavailable. Use it as a readiness probe; it does not
+verify migration versions. Configure probing in orchestration; no probe utilities
+or Docker HEALTHCHECK are installed in the runtime image.
+
+Run migrations first through the root Compose Flyway service using `db/migration`.
+This image neither includes nor executes Flyway. Compose configuration belongs
+in the root orchestration repository.
 
 ---
 
