@@ -20,6 +20,20 @@ public sealed class JwtRsaKeys(
     public RsaSecurityKey ValidationKey => _validationKey
         ?? throw new InvalidOperationException("JWT RSA keys have not been loaded.");
 
+    public JsonWebKey GetPublicJsonWebKey()
+    {
+        var key = ValidationKey;
+        return new JsonWebKey
+        {
+            Kty = "RSA",
+            Use = "sig",
+            Kid = key.KeyId,
+            Alg = SecurityAlgorithms.RsaSha256,
+            N = Base64UrlEncoder.Encode(key.Parameters.Modulus!),
+            E = Base64UrlEncoder.Encode(key.Parameters.Exponent!)
+        };
+    }
+
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         var configuration = options.Value;
