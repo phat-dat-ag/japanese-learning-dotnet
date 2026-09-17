@@ -277,10 +277,17 @@ The build context excludes PEM files, secret directories, and local configuratio
 Restart the container after replacing keys; existing startup validation and RS256
 validation remain enforced. The public key is available at `GET /.well-known/jwks.json`.
 
-The existing anonymous `GET /health` checks SQL Server connectivity: HTTP 200
-when healthy, HTTP 503 when unavailable. Use it as a readiness probe; it does not
-verify migration versions. Configure probing in orchestration; no probe utilities
-or Docker HEALTHCHECK are installed in the runtime image.
+Anonymous `GET /health/live` proves the application can serve HTTP without
+checking SQL Server. `GET /health/ready` checks connectivity to the configured
+application database with a three-second timeout; `/health` remains a readiness
+alias. Responses are plain `Healthy` (200) or `Unhealthy` (503), with no diagnostics.
+Required options and RSA keys are validated before HTTP startup. A SQL outage
+fails readiness while liveness remains healthy; readiness recovers automatically.
+These checks do not verify migration versions. The runtime image includes curl;
+the root Compose configuration uses `/health/ready` as its Docker healthcheck.
+`HealthEndpointTests` covers anonymous access, dependency isolation, failure,
+timeout, recovery, and safe response bodies through the production registrations
+and endpoint mappings. Existing RSA startup tests cover invalid key configuration.
 
 Run migrations first through the root Compose Flyway service using `db/migration`.
 This image neither includes nor executes Flyway. Compose configuration belongs
@@ -358,9 +365,10 @@ Swagger should load successfully.
 
 Open:
 
-http://localhost:5116/health
+http://localhost:5116/health/ready
 
-The health check should succeed when the application can connect to SQL Server.
+Readiness succeeds when the application can connect to SQL Server.
+Use `/health/live` for independent liveness; `/health` remains a readiness alias.
 
 ---
 

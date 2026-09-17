@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using JapaneseLearning.User.Api.Health;
 using JapaneseLearning.User.Api.Common.Errors;
 using JapaneseLearning.User.Api.Common.Responses;
 using JapaneseLearning.User.Application;
@@ -82,6 +83,6 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-app.MapHealthChecks("/health");
+app.MapServiceHealthChecks();
 
 app.Run();
