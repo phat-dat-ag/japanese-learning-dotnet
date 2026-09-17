@@ -14,6 +14,7 @@ FROM build AS publish
 RUN dotnet publish src/JapaneseLearning.User.Api/JapaneseLearning.User.Api.csproj -c Release --no-build --no-restore -p:UseAppHost=false -o /app/publish
 
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 ENV ASPNETCORE_HTTP_PORTS=8080 \
     ASPNETCORE_ENVIRONMENT=Production \

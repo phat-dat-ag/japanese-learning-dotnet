@@ -28,11 +28,10 @@ public sealed class SqlServerHealthCheck(
             return HealthCheckResult.Healthy(
                 "SQL Server is reachable.");
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             return HealthCheckResult.Unhealthy(
-                "SQL Server is unavailable.",
-                ex);
+                "SQL Server is unavailable.");
         }
     }
 }

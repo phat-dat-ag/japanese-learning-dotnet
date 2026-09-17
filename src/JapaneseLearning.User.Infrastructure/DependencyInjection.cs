@@ -64,7 +64,9 @@ public static class DependencyInjection
 
         services.AddHealthChecks()
             .AddCheck<SqlServerHealthCheck>(
-                "sql-server");
+                "sql-server",
+                tags: ["ready"],
+                timeout: TimeSpan.FromSeconds(3));
 
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IPasswordHasher, PasswordHasher>();
