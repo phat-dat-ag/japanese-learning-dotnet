@@ -39,9 +39,9 @@ public sealed class LoggingBehavior<TRequest, TResponse>(
             stopwatch.Stop();
 
             logger.LogError(
-                ex,
-                "Request {RequestName} failed after {ElapsedMilliseconds}ms",
+                "Request {RequestName} failed with {ExceptionType} after {ElapsedMilliseconds}ms",
                 requestName,
+                ex.GetType().Name,
                 stopwatch.ElapsedMilliseconds);
 
             throw;
