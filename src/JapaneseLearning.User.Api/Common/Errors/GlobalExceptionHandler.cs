@@ -15,11 +15,6 @@ public sealed class GlobalExceptionHandler(
     {
         var traceId = httpContext.TraceIdentifier;
 
-        logger.LogError(
-            "Exception {ExceptionType} occurred. TraceId: {TraceId}",
-            exception.GetType().Name,
-            traceId);
-
         var (statusCode, error) = exception switch
         {
             NotFoundException ex => (
@@ -50,12 +45,29 @@ public sealed class GlobalExceptionHandler(
                             string.Join("; ", g.Select(x => x.ErrorMessage))))
                         .ToArray())),
 
+            BadHttpRequestException ex => (ex.StatusCode, ApiErrorHandling.ForStatus(ex.StatusCode)),
+
             _ => (
                 StatusCodes.Status500InternalServerError,
                 new ApiError(
                     "INTERNAL_SERVER_ERROR",
                     "An unexpected error occurred."))
         };
+
+        if (statusCode >= 500)
+        {
+            // Metadata only: exception messages, data and source file paths can contain secrets.
+            var locations = new List<string>();
+            for (Exception? cause = exception; cause is not null && locations.Count < 5; cause = cause.InnerException)
+            {
+                var frames = new System.Diagnostics.StackTrace(cause, false).GetFrames();
+                locations.Add(cause.GetType().FullName + ": " + string.Join(" <- ",
+                    frames.Take(12).Select(frame =>
+                        frame.GetMethod()?.DeclaringType?.FullName + "." + frame.GetMethod()?.Name)));
+            }
+            logger.LogError("Unhandled exception {ExceptionType}. Locations: {FailureLocations}. TraceId: {TraceId}",
+                exception.GetType().Name, string.Join(" | ", locations), traceId);
+        }
 
         var response = ApiResponse<object>.Fail(
             error,

@@ -17,13 +17,7 @@ builder.Services
             JsonIgnoreCondition.WhenWritingNull;
     });
 
-builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
-builder.Services.AddProblemDetails(options =>
-{
-    // MVC validation and framework errors should use the same ID as API errors.
-    options.CustomizeProblemDetails = context =>
-        context.ProblemDetails.Extensions["traceId"] = context.HttpContext.TraceIdentifier;
-});
+builder.Services.AddApiErrorHandling();
 
 builder.Services.AddApplication();
 
@@ -71,7 +65,7 @@ builder.Services.AddSwaggerGen(options =>
 var app = builder.Build();
 
 app.UseMiddleware<CorrelationIdMiddleware>();
-app.UseExceptionHandler();
+app.UseApiErrorHandling();
 
 if (app.Environment.IsDevelopment())
 {
