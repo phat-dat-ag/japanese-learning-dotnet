@@ -22,6 +22,7 @@ public static class AuthenticationExtensions
                 var jwtOptions = configuredOptions.Value;
                 // Map sub, unique_name, email and role to the standard .NET claim types.
                 options.MapInboundClaims = true;
+                options.IncludeErrorDetails = false;
                 options.TokenValidationParameters = new TokenValidationParameters
                 {
                     ValidateIssuer = true,

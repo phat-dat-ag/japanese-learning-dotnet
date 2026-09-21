@@ -21,30 +21,10 @@ public sealed class LoggingBehavior<TRequest, TResponse>(
 
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
-        try
-        {
-            var response = await next(cancellationToken);
-
-            stopwatch.Stop();
-
-            logger.LogInformation(
-                "Handled {RequestName} in {ElapsedMilliseconds}ms",
-                requestName,
-                stopwatch.ElapsedMilliseconds);
-
-            return response;
-        }
-        catch (Exception ex)
-        {
-            stopwatch.Stop();
-
-            logger.LogError(
-                "Request {RequestName} failed with {ExceptionType} after {ElapsedMilliseconds}ms",
-                requestName,
-                ex.GetType().Name,
-                stopwatch.ElapsedMilliseconds);
-
-            throw;
-        }
+        // The API exception handler owns failure logging; expected business failures are not errors.
+        var response = await next(cancellationToken);
+        logger.LogInformation("Handled {RequestName} in {ElapsedMilliseconds}ms",
+            requestName, stopwatch.ElapsedMilliseconds);
+        return response;
     }
 }
