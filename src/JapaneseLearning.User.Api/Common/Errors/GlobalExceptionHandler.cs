@@ -16,8 +16,8 @@ public sealed class GlobalExceptionHandler(
         var traceId = httpContext.TraceIdentifier;
 
         logger.LogError(
-            exception,
-            "Exception occurred. TraceId: {TraceId}",
+            "Exception {ExceptionType} occurred. TraceId: {TraceId}",
+            exception.GetType().Name,
             traceId);
 
         var (statusCode, error) = exception switch

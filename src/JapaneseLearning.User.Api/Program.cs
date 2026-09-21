@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using JapaneseLearning.User.Api.Common.Logging;
 using JapaneseLearning.User.Api.Health;
 using JapaneseLearning.User.Api.Common.Errors;
 using JapaneseLearning.User.Api.Common.Responses;
@@ -17,7 +18,12 @@ builder.Services
     });
 
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
-builder.Services.AddProblemDetails();
+builder.Services.AddProblemDetails(options =>
+{
+    // MVC validation and framework errors should use the same ID as API errors.
+    options.CustomizeProblemDetails = context =>
+        context.ProblemDetails.Extensions["traceId"] = context.HttpContext.TraceIdentifier;
+});
 
 builder.Services.AddApplication();
 
@@ -64,6 +70,7 @@ builder.Services.AddSwaggerGen(options =>
 
 var app = builder.Build();
 
+app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseExceptionHandler();
 
 if (app.Environment.IsDevelopment())
