@@ -103,7 +103,7 @@ public sealed class JwksEndpointTests(RsaKeyFixture fixture) : IClassFixture<Rsa
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
-            ["Database:ConnectionString"] = "Server=unused;Database=unused",
+            ["Database:ConnectionString"] = "Server=unused;Database=unused;Integrated Security=True",
             ["Jwt:PrivateKeyPath"] = fixture.PrivateKeyPath,
             ["Jwt:PublicKeyPath"] = fixture.PublicKeyPath,
             ["Jwt:KeyId"] = keyId,

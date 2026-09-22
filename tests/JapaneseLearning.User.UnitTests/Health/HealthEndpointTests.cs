@@ -37,13 +37,14 @@ public sealed class HealthEndpointTests(RsaKeyFixture fixture) : IClassFixture<R
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
-            ["Database:ConnectionString"] = "Server=unused;Database=unused",
+            ["Database:ConnectionString"] = "Server=unused;Database=unused;Integrated Security=True",
             ["Jwt:PrivateKeyPath"] = fixture.PrivateKeyPath,
             ["Jwt:PublicKeyPath"] = fixture.PublicKeyPath,
             ["Jwt:KeyId"] = RsaKeyFixture.KeyId,
             ["Jwt:Issuer"] = "JapaneseLearning.User",
             ["Jwt:Audience"] = "JapaneseLearning",
-            ["Jwt:AccessTokenExpirationMinutes"] = "15"
+            ["Jwt:AccessTokenExpirationMinutes"] = "15",
+            ["Jwt:RefreshTokenExpirationDays"] = "7"
         });
         builder.Services.AddInfrastructure(builder.Configuration);
         builder.Services.AddSingleton(factory.Object);

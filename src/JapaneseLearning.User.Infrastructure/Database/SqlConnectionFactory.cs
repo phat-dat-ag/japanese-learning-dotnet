@@ -15,7 +15,7 @@ public sealed class SqlConnectionFactory(
     : ISqlConnectionFactory
 {
     private readonly string _connectionString =
-        options.Value.ConnectionString;
+        options.Value.GetConnectionString();
 
     public IDbConnection CreateConnection()
     {

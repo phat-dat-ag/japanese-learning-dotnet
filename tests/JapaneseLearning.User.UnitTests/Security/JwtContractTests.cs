@@ -190,7 +190,7 @@ public sealed class JwtContractTests(RsaKeyFixture fixture) : IClassFixture<RsaK
 
         var exception = Assert.Throws<OptionsValidationException>(
             () => provider.GetRequiredService<IOptions<JwtOptions>>().Value);
-        Assert.Contains("JWT access-token lifetime must be positive.", exception.Failures);
+        Assert.Contains("JWT access-token lifetime must be between 1 and 1440 minutes.", exception.Failures);
     }
 
     [Theory]
