@@ -21,12 +21,13 @@
 **/.env.*
 **/secrets/
 **/*.[pP][eE][mM]
-**/*.key
-**/*.pfx
-**/*.p12
+**/*.[kK][eE][yY]
+**/*.[pP][fF][xX]
+**/*.[pP]12
 **/appsettings.*.json
 **/launchSettings.json
 **/*.http
 **/docker-data/
 tests/
 db/
+**/*.[jJ][kK][sS]

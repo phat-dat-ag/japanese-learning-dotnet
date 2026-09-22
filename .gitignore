@@ -64,3 +64,14 @@ docker-data/
 *.tmp
 *.temp
 *.swp
+# Local secret files
+secrets/
+*.[pP][eE][mM]
+*.key
+*.pfx
+*.p12
+*.jks
+appsettings.Local.json
+application-local.properties
+application-local.yaml
+application-local.yml

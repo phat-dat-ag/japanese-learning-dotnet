@@ -18,6 +18,15 @@ namespace JapaneseLearning.User.UnitTests.Security;
 public sealed class JwtRsaStartupTests(RsaKeyFixture fixture) : IClassFixture<RsaKeyFixture>
 {
     [Theory]
+    [InlineData("Database:ConnectionString", "", "Database configuration")]
+    [InlineData("Database:ConnectionString", "Server=unused;Database=unused;synthetic-secret=bad", "Database configuration")]
+    [InlineData("Jwt:AccessTokenExpirationMinutes", "synthetic-secret", "invalid value")]
+    [InlineData("Jwt:AccessTokenExpirationMinutes", "0", "lifetime")]
+    [InlineData("Jwt:RefreshTokenExpirationDays", "0", "lifetime")]
+    [InlineData("Jwt:RefreshTokenExpirationDays", "999999999", "lifetime")]
+    [InlineData("Jwt:KeyId", "unsafe\nsynthetic-secret", "key ID")]
+    [InlineData("Jwt:Issuer", "", "issuer")]
+    [InlineData("Jwt:Audience", "", "audience")]
     [InlineData("Jwt:PrivateKeyPath", "", "private key path")]
     [InlineData("Jwt:PublicKeyPath", "", "public key path")]
     [InlineData("Jwt:KeyId", "", "key ID")]
@@ -32,6 +41,7 @@ public sealed class JwtRsaStartupTests(RsaKeyFixture fixture) : IClassFixture<Rs
         await using var app = CreateApplication(key, value);
         var exception = await Assert.ThrowsAsync<OptionsValidationException>(() => app.StartAsync());
         Assert.Contains(message, exception.Message);
+        Assert.DoesNotContain("synthetic-secret", exception.ToString());
     }
 
     [Fact]
@@ -81,7 +91,7 @@ public sealed class JwtRsaStartupTests(RsaKeyFixture fixture) : IClassFixture<Rs
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         var configuration = new Dictionary<string, string?>
         {
-            ["Database:ConnectionString"] = "Server=unused;Database=unused",
+            ["Database:ConnectionString"] = "Server=unused;Database=unused;Integrated Security=True",
             ["Jwt:PrivateKeyPath"] = absolutePaths ? fixture.PrivateKeyPath : "private.pem",
             ["Jwt:PublicKeyPath"] = absolutePaths ? fixture.PublicKeyPath : "public.pem",
             ["Jwt:KeyId"] = RsaKeyFixture.KeyId,
