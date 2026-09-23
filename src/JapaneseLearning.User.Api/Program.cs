@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using JapaneseLearning.User.Api.Observability;
 using JapaneseLearning.User.Api.Common.Logging;
 using JapaneseLearning.User.Api.Health;
 using JapaneseLearning.User.Api.Common.Errors;
@@ -18,6 +19,7 @@ builder.Services
     });
 
 builder.Services.AddApiErrorHandling();
+builder.Services.AddSingleton<ApplicationMetrics>();
 
 builder.Services.AddApplication();
 
@@ -65,6 +67,8 @@ builder.Services.AddSwaggerGen(options =>
 var app = builder.Build();
 
 app.UseMiddleware<CorrelationIdMiddleware>();
+app.UseRouting();
+app.UseApplicationMetrics();
 app.UseApiErrorHandling();
 
 if (app.Environment.IsDevelopment())
@@ -85,5 +89,6 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.MapServiceHealthChecks();
+app.MapApplicationMetrics();
 
 app.Run();
