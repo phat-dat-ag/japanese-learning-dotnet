@@ -1,22 +1,22 @@
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using System.Net.Http.Headers;
-using System.Text;
 using JapaneseLearning.User.Api.Authentication;
-using JapaneseLearning.User.Infrastructure.Configuration;
-using JapaneseLearning.User.UnitTests.Security;
-using Microsoft.IdentityModel.Tokens;
-using System.Collections.Concurrent;
-using System.Text.Json;
-using System.ComponentModel.DataAnnotations;
-using Microsoft.AspNetCore.Mvc;
 using JapaneseLearning.User.Api.Common.Errors;
 using JapaneseLearning.User.Api.Common.Logging;
+using JapaneseLearning.User.Infrastructure.Configuration;
+using JapaneseLearning.User.UnitTests.Security;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.IdentityModel.Tokens;
+using System.Collections.Concurrent;
+using System.ComponentModel.DataAnnotations;
+using System.IdentityModel.Tokens.Jwt;
+using System.Net.Http.Headers;
+using System.Security.Claims;
+using System.Text;
+using System.Text.Json;
 
 namespace JapaneseLearning.User.UnitTests.Logging;
 
@@ -250,7 +250,11 @@ public sealed class CorrelationIdTests(RsaKeyFixture fixture) : IClassFixture<Rs
                     if (scope is IEnumerable<KeyValuePair<string, object>> pairs)
                         list.AddRange(pairs.Select(pair => $"{pair.Key}={pair.Value}|"));
                 }, values);
-                owner.Entries.Enqueue(level + "|" + string.Join("", values) + formatter(state, exception) + exception);
+                owner.Entries.Enqueue(level + "|" + string.Join("", values) + formatter(state, exception) + exception +
+                    (state is IEnumerable<KeyValuePair<string, object>> properties
+                        ? string.Join("", properties.Where(pair => pair.Value is SafeExceptionDetails)
+                            .Select(pair => JsonSerializer.Serialize(pair.Value)))
+                        : ""));
             }
         }
     }

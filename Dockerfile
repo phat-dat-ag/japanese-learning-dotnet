@@ -21,5 +21,6 @@ ENV ASPNETCORE_HTTP_PORTS=8080 \
     Http__RedirectToHttps=false
 EXPOSE 8080
 COPY --from=publish /app/publish/ ./
+RUN mkdir -p /app/logs && chown "$APP_UID:$APP_UID" /app/logs && chmod 750 /app/logs
 USER $APP_UID
 ENTRYPOINT ["dotnet", "JapaneseLearning.User.Api.dll"]

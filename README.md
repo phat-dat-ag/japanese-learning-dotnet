@@ -503,23 +503,102 @@ Error responses use:
 
 ## Logging
 
-Application requests are logged through the MediatR logging pipeline.
+The API hosts Serilog; Application and Infrastructure continue using Microsoft
+`ILogger<T>`. A console bootstrap logger captures early startup failures, then the
+configured console/file logger takes over. Shutdown closes and flushes both sinks.
+No request/response body logging or external logging service is enabled.
 
-The logging behavior records:
+Both sinks write newline-delimited JSON using Serilog's JsonFormatter schema:
+Timestamp, Level, MessageTemplate, RenderedMessage, optional TraceId/SpanId, and
+Properties (ServiceName, Environment, CorrelationId, EventId and operation fields).
+Every event occupies one line; stack frames are JSON arrays. Property names and
+the schema are identical on console and disk.
 
-- Request name
-- Execution time
-- Successful requests
-- Failed requests
+Files default to logs/user-api-YYYYMMDD.json relative to the process working
+directory. They roll daily (host/container local date) and at 100 MiB, with
+numbered size-roll suffixes. The file sink applies a 30-day age limit when opening
+or rolling files, including on restart; there is no cleanup while the process is
+stopped. A second limit of 300 files bounds storage to approximately 30 GiB.
+High volume can shorten the 30-day history. Both limits apply; 30 files would
+not mean 30 days when size rolling is enabled. Events are flushed without an
+in-memory queue. Monitor available disk space; sink write failures cannot be
+made durable by logging alone.
 
-Example:
+Configuration in appsettings.json is also the Production default (there is no
+separate Production file). Default/application levels are Information;
+Microsoft/System are Warning, with hosting lifecycle events at Information.
+Development permits Debug for JapaneseLearning.User only. Environment overrides:
 
-```text
-Handling CreateUserCommand
-Handled CreateUserCommand in 25ms
+| Variable | Default |
+| --- | --- |
+| LogFiles__Directory | logs |
+| LogFiles__RetentionDays | 30 |
+| LogFiles__FileSizeLimitBytes | 104857600 |
+| LogFiles__RetainedFileCountLimit | 300 |
+| Serilog__MinimumLevel__Default | Information |
+| Serilog__MinimumLevel__Override__JapaneseLearning.User | Information |
+
+Restart after changing file settings. Keep production levels at Information or
+higher. Framework request-start/completion, raw exception-handler dumps, and JWT
+handler diagnostics are excluded even if levels are lowered; custom completion
+and security events provide safe coverage.
+
+The existing correlation middleware validates X-Correlation-ID (1–64 ASCII
+letters/digits, underscore or hyphen), generates a replacement when needed, and
+returns it in the response header. The API error body's existing traceId field
+still holds this correlation ID for compatibility. Log TraceId and SpanId come
+from ASP.NET Core's Activity; no competing distributed trace is generated.
+Scopes flow through controllers, MediatR, infrastructure and exception handling.
+
+There is one HTTP completion event (EventId 1000) with RequestMethod, RequestPath,
+StatusCode, ElapsedMilliseconds, and authenticated GUID UserId when available.
+401/403 completions are warnings. Unexpected exceptions have one separate error
+event (5000); their completion remains informational to avoid duplicate error
+alerts. MediatR logs operation names/timings only. Security events include
+registration (2002), login (2001), refresh rotation (2003), logout (2004), and
+rejections with stable reason codes (2100).
+
+Exception diagnostics allowlist type, HResult, up to 64 method frames per cause,
+bounded nested/aggregate causes, and SQL Number, State, Class and
+ClientConnectionId. SQL login failure 18456 is searchable in ExceptionDetails.
+Arbitrary exception messages/Data, source file paths and raw exception dumps
+are deliberately excluded: messages can contain credentials. This policy also
+covers exception objects passed by framework/provider logs. API error responses
+remain unchanged and generic for unexpected failures.
+
+Never log passwords/hashes, access/refresh tokens, Authorization/Cookie/Set-Cookie,
+JWT key contents, credential-bearing connection strings, configuration objects,
+or authentication DTOs/commands. Custom logs exclude usernames/emails, query
+strings, headers and bodies. Routes must never put credentials in their path.
+The formatter is not a general-purpose secret scanner: new message templates
+and properties must follow this policy.
+
+Docker Compose mounts the dedicated user_api_logs volume at /app/logs. The image
+creates that directory for the existing non-root app user. The read-only root
+filesystem and database volumes are preserved. Logs survive container
+recreation; removing volumes explicitly also removes their logs. Standalone
+docker run deployments must likewise mount a named volume at /app/logs.
+Multiple replicas should use separate log volumes/directories. Bind mounts
+must be provisioned with write permissions for the app UID (1654).
+
+Inspect console logs from the repository root with:
+
+```sh
+docker compose logs --tail=100 -f user-api
 ```
 
-Failed requests include the exception and execution time in the logs.
+Inspect local files in PowerShell (from the API working directory):
+
+```powershell
+Get-Content ./logs/user-api-*.json -Tail 20
+Get-Content ./logs/user-api-*.json | ConvertFrom-Json |
+  Where-Object { $_.Properties.CorrelationId -eq 'your-correlation-id' }
+```
+
+A future Fluent Bit collector can mount the log volume read-only, tail
+user-api-*.json with a JSON parser, and forward events to Elasticsearch/Kibana.
+Persist its offset database and define field mappings/retention there. No
+application logging calls or direct Elasticsearch sink need to change.
 
 ---
 
