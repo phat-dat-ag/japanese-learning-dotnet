@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Security.Claims;
 
 namespace JapaneseLearning.User.Api.Common.Logging;
 
@@ -24,18 +25,36 @@ public sealed class CorrelationIdMiddleware(
 
         using var scope = logger.BeginScope(new Dictionary<string, object>
         {
-            ["CorrelationId"] = correlationId
+            ["CorrelationId"] = correlationId,
+            ["TraceId"] = Activity.Current?.TraceId.ToString() ?? string.Empty,
+            ["SpanId"] = Activity.Current?.SpanId.ToString() ?? string.Empty
         });
+
         var started = Stopwatch.GetTimestamp();
+        var failed = false;
+
         try
         {
             await next(context);
         }
+        catch
+        {
+            failed = true;
+            throw;
+        }
         finally
         {
-            // Do not log request URLs, headers, bodies, or exception messages.
-            logger.LogInformation("HTTP request completed with status {StatusCode} in {ElapsedMilliseconds}ms",
-                context.Response.StatusCode, Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+            var status = failed ? StatusCodes.Status500InternalServerError : context.Response.StatusCode;
+            // The exception handler owns error events; 401/403 are useful security warnings.
+            var level = status is 401 or 403 ? LogLevel.Warning : LogLevel.Information;
+            // Query strings, headers and bodies are deliberately excluded.
+            var userId = context.User.Identity?.IsAuthenticated == true &&
+                Guid.TryParse(context.User.FindFirstValue(ClaimTypes.NameIdentifier), out var id)
+                    ? (Guid?)id : null;
+            logger.Log(level, new EventId(1000, "HttpRequestCompleted"),
+                "HTTP request completed: {RequestMethod} {RequestPath} with status {StatusCode} in {ElapsedMilliseconds}ms for {UserId}",
+                context.Request.Method, context.Request.Path.Value, status,
+                Stopwatch.GetElapsedTime(started).TotalMilliseconds, userId);
         }
     }
 

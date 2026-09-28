@@ -1,9 +1,10 @@
 using JapaneseLearning.User.Application.Abstractions.Persistence;
 using JapaneseLearning.User.Application.Abstractions.Security;
 using JapaneseLearning.User.Application.Common.Exceptions;
-using UserEntity = JapaneseLearning.User.Domain.Entities.User;
 using JapaneseLearning.User.Domain.Users;
 using MediatR;
+using Microsoft.Extensions.Logging;
+using UserEntity = JapaneseLearning.User.Domain.Entities.User;
 
 namespace JapaneseLearning.User.Application.Auth.Register;
 
@@ -13,10 +14,14 @@ public sealed class RegisterCommandHandler
     private readonly IUserRepository _userRepository;
     private readonly IPasswordHasher _passwordHasher;
 
+    private readonly ILogger<RegisterCommandHandler> _logger;
+
     public RegisterCommandHandler(
         IUserRepository userRepository,
-        IPasswordHasher passwordHasher)
+        IPasswordHasher passwordHasher,
+        ILogger<RegisterCommandHandler> logger)
     {
+        _logger = logger;
         _userRepository = userRepository;
         _passwordHasher = passwordHasher;
     }
@@ -38,6 +43,9 @@ public sealed class RegisterCommandHandler
 
         if (usernameExists)
         {
+            _logger.LogWarning(new EventId(2100, "AuthenticationRejected"),
+                "Authentication operation {Operation} rejected: {Reason}", "Register", "USERNAME_ALREADY_EXISTS");
+
             throw new ConflictException(
                 "USERNAME_ALREADY_EXISTS",
                 "Username is already registered.");
@@ -50,6 +58,9 @@ public sealed class RegisterCommandHandler
 
         if (emailExists)
         {
+            _logger.LogWarning(new EventId(2100, "AuthenticationRejected"),
+                "Authentication operation {Operation} rejected: {Reason}", "Register", "EMAIL_ALREADY_EXISTS");
+
             throw new ConflictException(
                 "EMAIL_ALREADY_EXISTS",
                 "Email is already registered.");
@@ -72,6 +83,8 @@ public sealed class RegisterCommandHandler
         await _userRepository.AddAsync(
             user,
             cancellationToken);
+
+        _logger.LogInformation(new EventId(2002, "RegistrationSucceeded"), "RegistrationSucceeded for {UserId}", user.Id);
 
         return new RegisterResponse(
             user.Id,

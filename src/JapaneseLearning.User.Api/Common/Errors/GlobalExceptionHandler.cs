@@ -1,7 +1,8 @@
 using FluentValidation;
+using JapaneseLearning.User.Api.Common.Logging;
+using JapaneseLearning.User.Api.Common.Responses;
 using JapaneseLearning.User.Application.Common.Exceptions;
 using Microsoft.AspNetCore.Diagnostics;
-using JapaneseLearning.User.Api.Common.Responses;
 
 namespace JapaneseLearning.User.Api.Common.Errors;
 
@@ -56,17 +57,9 @@ public sealed class GlobalExceptionHandler(
 
         if (statusCode >= 500)
         {
-            // Metadata only: exception messages, data and source file paths can contain secrets.
-            var locations = new List<string>();
-            for (Exception? cause = exception; cause is not null && locations.Count < 5; cause = cause.InnerException)
-            {
-                var frames = new System.Diagnostics.StackTrace(cause, false).GetFrames();
-                locations.Add(cause.GetType().FullName + ": " + string.Join(" <- ",
-                    frames.Take(12).Select(frame =>
-                        frame.GetMethod()?.DeclaringType?.FullName + "." + frame.GetMethod()?.Name)));
-            }
-            logger.LogError("Unhandled exception {ExceptionType}. Locations: {FailureLocations}. TraceId: {TraceId}",
-                exception.GetType().Name, string.Join(" | ", locations), traceId);
+            logger.LogError(new EventId(5000, "UnhandledException"),
+                "Unhandled exception {ExceptionType}. Details: {@ExceptionDetails}",
+                exception.GetType().Name, SafeExceptionDetails.Create(exception));
         }
 
         var response = ApiResponse<object>.Fail(

@@ -3,6 +3,7 @@ using JapaneseLearning.User.Application.Abstractions.Security;
 using JapaneseLearning.User.Application.Common.Exceptions;
 using JapaneseLearning.User.Domain.Entities;
 using MediatR;
+using Microsoft.Extensions.Logging;
 
 namespace JapaneseLearning.User.Application.Auth.Login;
 
@@ -14,12 +15,16 @@ public sealed class LoginCommandHandler
     private readonly IRefreshTokenRepository _refreshTokenRepository;
     private readonly ITokenService _tokenService;
 
+    private readonly ILogger<LoginCommandHandler> _logger;
+
     public LoginCommandHandler(
         IUserRepository userRepository,
         IPasswordHasher passwordHasher,
         IRefreshTokenRepository refreshTokenRepository,
-        ITokenService tokenService)
+        ITokenService tokenService,
+        ILogger<LoginCommandHandler> logger)
     {
+        _logger = logger;
         _userRepository = userRepository;
         _passwordHasher = passwordHasher;
         _refreshTokenRepository = refreshTokenRepository;
@@ -40,6 +45,9 @@ public sealed class LoginCommandHandler
 
         if (user is null)
         {
+            _logger.LogWarning(new EventId(2100, "AuthenticationRejected"),
+                "Authentication operation {Operation} rejected: {Reason}", "Login", "INVALID_CREDENTIALS");
+
             throw new UnauthorizedException(
                 "INVALID_CREDENTIALS",
                 "Invalid email or password.");
@@ -47,6 +55,9 @@ public sealed class LoginCommandHandler
 
         if (!user.IsActive)
         {
+            _logger.LogWarning(new EventId(2100, "AuthenticationRejected"),
+                "Authentication operation {Operation} rejected: {Reason}", "Login", "USER_INACTIVE");
+
             throw new UnauthorizedException(
                 "USER_INACTIVE",
                 "User account is inactive.");
@@ -58,6 +69,9 @@ public sealed class LoginCommandHandler
 
         if (!passwordValid)
         {
+            _logger.LogWarning(new EventId(2100, "AuthenticationRejected"),
+                "Authentication operation {Operation} rejected: {Reason}", "Login", "INVALID_CREDENTIALS");
+
             throw new UnauthorizedException(
                 "INVALID_CREDENTIALS",
                 "Invalid email or password.");
@@ -80,6 +94,8 @@ public sealed class LoginCommandHandler
         await _refreshTokenRepository.AddAsync(
             refreshToken,
             cancellationToken);
+
+        _logger.LogInformation(new EventId(2001, "LoginSucceeded"), "LoginSucceeded for {UserId}", user.Id);
 
         return new LoginResponse(
             tokens.AccessToken,
