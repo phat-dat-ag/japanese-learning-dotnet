@@ -1,600 +1,150 @@
 # AGENTS.md
 
-## Project Overview
-
-This repository contains the **Japanese Learning User Service**, responsible for user accounts, authentication, authorization, and user-related persistence for the Japanese Learning application.
-
-The service follows a Clean Architecture style and should remain simple, secure, maintainable, testable, extensible, and production-ready.
-
-When modifying the project, preserve the existing architecture and conventions unless the task explicitly requires a change.
-
----
-
-## Tech Stack
-
-Current primary technologies:
-
-- .NET 9
-- ASP.NET Core Web API
-- MediatR
-- FluentValidation
-- SQL Server
-- Dapper
-- JWT Bearer Authentication
-- ASP.NET Core Identity password hashing
-- Flyway database migrations
-- Swagger / OpenAPI
-- .NET dependency injection
-- .NET logging and health checks
-
-The technology and persistence design may evolve as the project grows. Do not assume the current database schema or persistence implementation is final.
-
----
-
-## Solution Structure
-
-    src/
-    ├── JapaneseLearning.User.Api
-    ├── JapaneseLearning.User.Application
-    ├── JapaneseLearning.User.Domain
-    └── JapaneseLearning.User.Infrastructure
-
-    tests/
-    └── JapaneseLearning.User.UnitTests
-
-    db/
-    └── migration
-
-### API
-
-Responsibilities:
-
-- HTTP endpoints and controllers
-- Authentication and authorization configuration
-- HTTP request/response concerns
-- Global exception handling
-- API response models
-- Swagger/OpenAPI configuration
-- Application startup and middleware
-
-Controllers must remain thin.
-
-Do not place business logic or database access in controllers.
-
-### Application
-
-Responsibilities:
-
-- Application use cases
-- Commands and queries
-- MediatR handlers
-- Validation
-- Application abstractions/interfaces
-- Application-level exceptions
-- Pipeline behaviors
-- Request/response models used by use cases
-
-Application must not depend on Infrastructure.
-
-### Domain
-
-Responsibilities:
-
-- Core domain entities
-- Domain enums
-- Domain rules and concepts
-
-Domain should remain independent from API, Infrastructure, database, HTTP, and framework-specific implementation details whenever possible.
-
-### Infrastructure
-
-Responsibilities:
-
-- SQL Server access
-- Dapper repositories
-- Security implementations
-- Password hashing
-- JWT/token generation
-- Current authenticated user implementation
-- Health checks
-- External infrastructure integrations
-- Configuration implementations
-
-Infrastructure implements abstractions defined by Application where appropriate.
-
----
-
-## Dependency Rules
-
-Preserve the existing dependency direction.
-
-    API
-    ├── Application
-    └── Infrastructure
-
-    Infrastructure
-    ├── Application
-    └── Domain
-
-    Application
-    └── Domain
-
-    Domain
-    └── no project dependencies
-
-Never introduce reverse dependencies such as:
-
-- Domain -> Application
-- Domain -> Infrastructure
-- Domain -> API
-- Application -> Infrastructure
-- Application -> API
-
-Do not bypass architectural boundaries for convenience.
-
----
-
-## SOLID Principles
-
-All new and modified code must follow SOLID principles where they improve the design.
-
-### Single Responsibility Principle
-
-A class or method should have one clear responsibility.
-
-Avoid large handlers, services, controllers, repositories, or utility classes that perform unrelated work.
-
-### Open/Closed Principle
-
-Prefer designs that allow reasonable extension without repeatedly modifying unrelated existing code.
-
-Do not introduce unnecessary abstractions solely to satisfy this principle.
-
-### Liskov Substitution Principle
-
-Implementations must respect the contracts defined by their abstractions.
-
-Do not introduce implementations that behave unexpectedly compared with their interfaces.
-
-### Interface Segregation Principle
-
-Keep interfaces focused.
-
-Do not create large interfaces containing unrelated operations.
-
-### Dependency Inversion Principle
-
-Business/application logic should depend on abstractions rather than infrastructure implementations.
-
-Infrastructure should implement required abstractions.
-
-Use dependency injection instead of manually constructing infrastructure dependencies inside application code.
-
----
-
-## Clean Code
-
-All code must be:
-
-- Easy to read
-- Easy to understand
-- Easy to maintain
-- Easy to test
-- Easy to modify
-- Reasonably easy to extend
-- Production-ready
-
-Prefer clarity over cleverness.
-
-Use meaningful names that communicate intent.
-
-Keep methods small and focused.
-
-Keep classes cohesive.
-
-Avoid:
-
-- Duplicated logic
-- Deeply nested conditions
-- Unnecessary complexity
-- Magic values
-- Unclear abbreviations
-- Giant classes or methods
-- Premature optimization
-- Speculative abstractions
-- Unnecessary design patterns
-- Over-engineering
-
-Use early returns when they improve readability.
-
-Extract methods or abstractions when they provide real readability, reuse, testability, or architectural value.
-
-Do not create interfaces, wrappers, factories, services, or helper classes without a concrete reason.
-
-Follow existing project conventions before introducing new ones.
-
-Comments should explain important intent, constraints, or non-obvious decisions rather than compensate for unclear code.
-
----
-
-## Feature Organization
-
-Authentication features currently follow a feature-oriented structure such as:
-
-    Auth/
-    └── Register/
-        ├── RegisterCommand.cs
-        ├── RegisterCommandHandler.cs
-        ├── RegisterCommandValidator.cs
-        └── RegisterResponse.cs
-
-When implementing a similar use case, inspect an existing feature first and follow its structure unless there is a strong reason not to.
-
-Keep code belonging to a use case close together.
-
----
-
-## MediatR
-
-Use MediatR for application use cases consistent with the existing architecture.
-
-Typical flow:
-
-    Controller
-        -> Command / Query
-        -> ValidationBehavior
-        -> LoggingBehavior
-        -> Handler
-        -> Application abstraction
-        -> Infrastructure implementation
-
-Controllers should send requests through `ISender` rather than directly orchestrating repositories or infrastructure services.
-
-Handlers should coordinate the application use case.
-
-Do not move HTTP-specific concerns into handlers.
-
-Do not use MediatR merely to add unnecessary indirection outside the established application flow.
-
----
-
-## Validation
-
-Use FluentValidation for request/use-case validation consistent with the existing pipeline.
-
-Validators should handle input rules such as:
-
-- Required values
-- Length limits
-- Valid formats
-- Simple structural constraints
-
-Do not duplicate the same validation in controllers and handlers.
-
-Business conditions requiring persistence or domain decisions belong in the appropriate handler/domain logic rather than basic FluentValidation rules.
-
-Use the existing centralized validation pipeline.
-
----
-
-## Exception Handling
-
-Use the existing application exception hierarchy for expected application failures.
-
-Examples include:
-
-- `NotFoundException`
-- `ConflictException`
-- `UnauthorizedException`
-- `ForbiddenException`
-
-Allow the global exception handler to translate application exceptions into HTTP responses.
-
-Do not add repetitive `try/catch` blocks to controllers or handlers when centralized exception handling already covers the case.
-
-Do not expose stack traces, database errors, internal implementation details, or sensitive information to API clients.
-
-Unexpected exceptions should result in a safe generic server error response while being logged appropriately.
-
----
-
-## Async and Cancellation
-
-All I/O operations should be asynchronous.
-
-Propagate `CancellationToken` through the normal request flow:
-
-    Controller
-    -> MediatR
-    -> Handler
-    -> Repository / Infrastructure operation
-
-Do not use `.Result`, `.Wait()`, or `.GetAwaiter().GetResult()` for normal asynchronous application flows.
-
-Avoid blocking asynchronous operations.
-
----
-
-## Persistence
-
-The current persistence implementation uses:
-
-- SQL Server
-- Dapper
-- Repositories
-- Stored procedures
-- Flyway migrations
-
-Repository abstractions belong in Application.
-
-Repository implementations belong in Infrastructure.
-
-Keep SQL/database concerns out of controllers, handlers, and Domain.
-
-Use parameterized database operations. Never construct SQL using untrusted input through string concatenation or interpolation.
-
-Use transactions when multiple database operations must succeed or fail atomically.
-
-Avoid unnecessary database round trips.
-
-### Database Evolution
-
-The current database design is **not considered final**.
-
-The schema, stored procedures, repository design, and persistence approach may evolve as new features are added.
-
-For current tasks:
-
-- Follow the existing persistence conventions
-- Do not assume the existing schema is immutable
-- Do not redesign persistence without a requirement
-- Do not change database technology without explicit instruction
-- Do not perform unrelated schema changes
-- Keep migrations forward-only and reproducible
-
-Database schema changes must be represented through migrations rather than undocumented manual database changes.
-
-Do not modify an existing migration that may already have been applied unless explicitly instructed and the consequences are understood.
-
-Prefer creating a new migration for schema evolution.
-
----
-
-## Security
-
-Treat authentication and authorization code as security-sensitive.
-
-Never:
-
-- Store plaintext passwords
-- Log passwords
-- Log JWT secrets
-- Log access tokens
-- Log refresh tokens
-- Commit secrets
-- Hard-code production credentials
-- Expose password hashes through APIs
-
-Use the existing password hashing abstraction.
-
-Use cryptographically secure randomness for security tokens.
-
-Refresh tokens should be stored and compared using their hash according to the existing design.
-
-JWT configuration must come from configuration or environment sources rather than hard-coded production values.
-
-Authorization must be enforced server-side.
-
-Do not trust role, user ID, email, or authorization information supplied by the client when authenticated claims are the authoritative source.
-
-Do not weaken authentication, token validation, password handling, or authorization rules merely to make a test pass.
-
----
-
-## Logging
-
-Use structured logging.
-
-Prefer structured placeholders such as:
-
-    logger.LogInformation(
-        "Handled {RequestName} in {ElapsedMilliseconds}ms",
-        requestName,
-        elapsedMilliseconds);
-
-Avoid interpolated log strings when structured logging is appropriate.
-
-Logs should provide useful operational context without leaking sensitive information.
-
-Avoid excessive logging in frequently executed paths.
-
-Never log secrets, credentials, passwords, raw tokens, or other sensitive authentication data.
-
----
-
-## API Design
-
-Keep API contracts clear and predictable.
-
-Use appropriate HTTP status codes.
-
-Preserve existing API contracts unless the task explicitly requires a breaking change.
-
-Keep HTTP-specific concerns in the API layer.
-
-When adding or changing endpoints, keep Swagger/OpenAPI metadata accurate where applicable.
-
-Do not expose persistence entities directly when doing so unnecessarily couples the public API to the database or domain representation.
-
----
-
-## Production Readiness
-
-Code should be written as production code, not tutorial or prototype code.
-
-Consider where relevant:
-
-- Validation
-- Error handling
-- Security
-- Cancellation
-- Concurrency
-- Transaction boundaries
-- Nullability
-- Logging
-- Observability
-- Performance
-- API compatibility
-- Database consistency
-- Failure scenarios
-
-Do not add infrastructure for hypothetical problems.
-
-Production-ready does not mean maximum complexity.
-
-Choose the simplest design that correctly handles the real requirements.
-
----
-
-## Testing
-
-Behavior changes should include appropriate tests when practical.
-
-Prioritize tests for:
-
-- Application handlers
-- Validators
-- Business rules
-- Security-sensitive behavior
-- Bug fixes
-- Important edge cases
-
-A bug fix should normally include a regression test when feasible.
-
-Test observable behavior rather than private implementation details.
-
-Mock architectural boundaries where appropriate rather than mocking every internal method.
-
-Tests should remain deterministic and independent.
-
-Do not weaken or delete valid tests simply to make a change pass.
-
----
-
-## Change Scope
-
-Make the smallest coherent change required to complete the task correctly.
-
-Do not:
-
-- Refactor unrelated code
-- Rename unrelated files
-- Reformat unrelated files
-- Change architecture unnecessarily
-- Upgrade packages without a reason
-- Change public contracts unnecessarily
-- Introduce unrelated features
-
-If an existing issue is discovered outside the requested scope, mention it instead of automatically fixing it.
-
----
-
-## Repository Exploration
-
-Before implementing a change:
-
-1. Read this `AGENTS.md`.
-2. Identify the layer and feature affected.
-3. Inspect the directly relevant files.
-4. Inspect one similar existing implementation when useful.
-5. Understand the existing convention.
-6. Make the smallest correct change.
-
-Do not scan the entire repository unless the task genuinely requires broad analysis.
-
-Ignore generated/build artifacts during normal code exploration:
-
-    .vs/
-    bin/
-    obj/
-    TestResults/
-    coverage/
-    CoverageReport/
-    logs/
-
-Do not edit generated files.
-
-Prefer source files and project configuration over generated output.
-
----
-
-## Implementation Decisions
-
-When multiple solutions are valid, prefer in this order:
-
-1. Correctness
-2. Security
-3. Existing project conventions
-4. Simplicity
-5. Readability
-6. Maintainability
-7. Testability
-8. Extensibility
-9. Performance when relevant
-
-Do not sacrifice readability and maintainability for insignificant optimization.
-
-Before creating a new abstraction, check whether the project already has an appropriate abstraction or pattern.
-
-Before adding a dependency, determine whether the requirement can reasonably be implemented with the existing stack.
-
----
-
-## Build and Verification
-
-After code changes, run the narrowest useful verification first.
-
-Typical commands:
-
-    dotnet restore
-    dotnet build JapaneseLearning.User.sln
-    dotnet test JapaneseLearning.User.sln
-
-For small changes, targeted project/test execution is acceptable before running broader verification.
-
-Do not claim that code builds or tests pass unless the relevant command was actually executed successfully.
-
-If verification cannot be run, clearly state what was not verified.
-
----
-
-## Definition of Done
-
-A task is complete when applicable requirements are satisfied:
-
-- Requested behavior is implemented
-- Architecture boundaries are preserved
-- SOLID principles are respected
-- Clean Code principles are respected
-- Code is readable and understandable
-- Code is maintainable and reasonably extensible
-- Security requirements are preserved
-- Validation and error handling are appropriate
-- Async operations remain non-blocking
-- Cancellation is propagated where applicable
-- Database changes are migration-driven when required
-- Relevant tests are added or updated
-- Relevant build/tests pass
-- No secrets are introduced
-- No unrelated changes are included
-- Implementation is suitable for production use
-
----
-
-## Final Rule
-
-Do not blindly apply generic best practices.
-
-First understand how this repository currently solves similar problems, then implement the requested change using the simplest clean solution consistent with the architecture.
-
-Prefer focused, understandable, maintainable, extensible, production-ready code over clever or over-engineered code.
+## Project context
+
+- This .NET service owns authentication, user identity, roles, and user persistence for the Japanese Learning application. Angular owns the frontend; Quarkus owns vocabulary, flashcards, and the API Gateway.
+- Stack: .NET 9 / ASP.NET Core controllers, MediatR, FluentValidation, SQL Server, Dapper/stored procedures, Identity password hashing, RS256 JWT/JWKS, Serilog, and prometheus-net.
+- Preserve the existing four-layer architecture. Use [README.md](README.md) for setup, configuration, endpoint details, and deployment; verify task-relevant claims against code.
+
+## Repository navigation
+
+All project names below have the prefix `JapaneseLearning.User.`.
+
+| Location | Look here for |
+| --- | --- |
+| `JapaneseLearning.User.sln` | Four service projects and the test project |
+| `src/JapaneseLearning.User.Api/` | `Controllers/`, `Authentication/`, `Program.cs`, `appsettings*.json` |
+| API `Common/`, `Health/`, `Observability/` | Errors/responses, safe logging, correlation, probes, metrics |
+| `src/JapaneseLearning.User.Application/` | `Auth/{Register,Login,Refresh,Logout}/` commands, handlers, validators, response records |
+| Application `Abstractions/`, `Common/` | Persistence/security interfaces, behaviors, application exceptions |
+| `src/JapaneseLearning.User.Domain/Entities/` | User, refresh token, and role definitions |
+| `src/JapaneseLearning.User.Infrastructure/` | `Persistence/Repositories/`, `Database/`, `Security/`, `Configuration/`, `HealthChecks/` |
+| `db/migration/` | Versioned SQL scripts; Flyway runner is external |
+| `tests/JapaneseLearning.User.UnitTests/` | `Security/`, `Logging/`, `Health/`, `Observability/` |
+| `Dockerfile`, `.dockerignore` | Container build and context exclusions |
+
+## Token-efficient exploration
+
+- Start from the user's task; identify the smallest relevant feature/layer before reading code.
+- Inspect filenames with scoped `rg --files`, then use targeted `rg -n` searches and bounded reads. Do not scan the whole repository by default.
+- Read the relevant implementation, direct dependencies, and one similar feature/test when useful. Expand only when evidence requires it.
+- Reuse this file, README, and already examined context; do not repeatedly dump files or read generated output for orientation.
+- Exclude `.git/`, `.vs/`, `bin/`, `obj/`, `TestResults/`, `coverage/`, `CoverageReport/`, `logs/`, and dependency directories from normal searches.
+- Do not open key files, secret stores, or credential-bearing local configuration merely to inspect configuration structure.
+- Batch independent targeted reads; avoid redundant commands and tools. Never save tokens by skipping necessary validation or security checks.
+
+## Existing coding conventions
+
+- Follow the existing repository style and any applicable `.editorconfig`; none is currently checked into this submodule. Do not introduce a new style or formatter configuration.
+- C# uses file-scoped namespaces, normally matching the project/feature; inspect existing namespaces before adding imports because some paths and namespaces differ.
+- Use PascalCase types, members, and methods; `I`-prefixed interfaces; camelCase locals/parameters; `_camelCase` explicit private fields; `Async` suffixes for asynchronous operations except framework contracts such as `Handle`.
+- Nullable references and implicit usings are enabled. Honor nullability rather than suppressing warnings to bypass a real condition.
+- C# generally uses four-space indentation and braces on separate lines. Preserve the nearby style, including existing constructor/primary-constructor choices and project-file indentation.
+- Commands and use-case responses are typically sealed positional records; handlers, validators, repositories, and controllers are generally sealed classes.
+- Keep a use case together under `Application/Auth/<Feature>/`: command, handler, validator when needed, and response. Follow Register/Login as examples.
+- Inject dependencies through constructors; register through existing `DependencyInjection.cs` extensions or the API composition root. Do not manually construct infrastructure in handlers.
+- Controllers use route attributes and `ISender` for application use cases; claim-only endpoints use `ICurrentUser`. Keep transport logic in API.
+- Comments explain intent or constraints, not obvious syntax. Do not normalize unrelated existing formatting.
+
+## Clean code and SOLID
+
+- Apply DRY, KISS, YAGNI, and SOLID to concrete needs: focused methods, cohesive classes, descriptive names, explicit dependencies, and readable control flow.
+- Keep business decisions separate from HTTP/database mechanics. Use guard clauses to reduce nesting and named values for meaningful constants.
+- Prefer composition when appropriate; implementations must honor interface contracts, and interfaces must remain focused.
+- Do not create an interface, factory, wrapper, base class, or generic helper without a concrete reuse, boundary, or testability need.
+- Prioritize correctness, security, existing conventions, simplicity, readability, and maintainability over cleverness or speculative optimization.
+
+## Reuse and consistency
+
+- Before adding behavior, search the affected layer for an existing abstraction, validator, DTO, or implementation that fits.
+- Extend or reuse cohesive components; do not duplicate business rules or move unrelated responsibilities into a shared utility.
+- Keep reusable application logic in Application and implementation details in Infrastructure. Do not leak persistence entities into public contracts unnecessarily.
+- Preserve public routes, DTO fields, status codes, and claim contracts unless the requested change requires otherwise.
+- Use the current stack before adding a dependency; justify any necessary package or architectural addition.
+
+## Architecture and dependencies
+
+- Project references: API → Application + Infrastructure; Infrastructure → Application + Domain; Application → Domain; Domain → no projects.
+- Never introduce reverse/circular dependencies. Keep Domain independent of HTTP, database access, and infrastructure/framework implementation details.
+- Application handlers coordinate use cases through abstractions; repository/security interfaces belong in Application.
+- Infrastructure implements persistence/security abstractions; API owns authentication setup, HTTP responses, middleware, and composition.
+- Existing pipeline order is controller → MediatR → ValidationBehavior → LoggingBehavior → handler. Do not duplicate pipeline validation in controllers.
+- Put structural/input rules in FluentValidation; persistence-dependent business conditions belong in handlers or domain logic.
+- Preserve service boundaries. Do not add frontend, vocabulary, or gateway responsibilities or new patterns without a task requirement.
+
+## Production-quality implementation
+
+- Validate untrusted input; handle relevant nulls, expected failures, cancellation, and resource disposal without speculative defensive layers.
+- Use asynchronous I/O and propagate `CancellationToken` through controller, MediatR, and repository operations. Do not block with `.Result`, `.Wait()`, or `.GetAwaiter().GetResult()`.
+- Use existing application exceptions (`NotFoundException`, `ConflictException`, `UnauthorizedException`, `ForbiddenException`); let global handling translate them. Avoid repetitive catch/rethrow blocks.
+- Preserve actual responses: auth success returns DTOs directly; logout is 204; errors use `ApiResponse<T>`. Do not automatically wrap successes. Keep Swagger metadata accurate.
+- Use parameterized Dapper `CommandDefinition` calls and stored procedures; never interpolate untrusted SQL. Avoid unnecessary round trips.
+- Use a transaction/atomic operation when a required multi-write invariant needs it; do not assume separate repository calls share a transaction.
+- Schema/procedure changes require new forward-only, reproducible migrations in `db/migration/`. Do not edit potentially applied migrations without explicit instruction and understood consequences.
+- The schema may evolve; follow current persistence conventions without treating them as immutable or redesigning them without a requirement.
+- Use typed options and external configuration; preserve startup validation. Never hard-code environment-specific deployment values.
+- Use structured `ILogger<T>` templates. Preserve safe exception diagnostics, correlation, and existing event conventions; avoid duplicate error logs or logging whole request/response objects.
+- Preserve health/metrics contracts and bounded metric labels; do not add user IDs, tokens, or arbitrary paths as metric labels.
+
+## Authentication and security
+
+- Use `IPasswordHasher` and its Identity implementation; never store/expose plaintext passwords or expose hashes through APIs.
+- Preserve RS256 signing and validation of signature, algorithm, issuer, audience, required expiry, and zero clock skew.
+- RSA keys load once at startup from configured PEM paths; require a matching pair of at least 2048 bits. JWKS exposes public parameters only.
+- Preserve JWT claims and standard inbound mapping used by `ICurrentUser`. Use authenticated claims, not client-supplied IDs/roles, as authorization authority.
+- Registration creates active User accounts. Login/refresh check active status; protected endpoints use bearer authentication and Admin role authorization where declared.
+- Refresh tokens use cryptographic randomness and SHA-256 hash storage. Preserve expiry, rotation, and revocation checks; logout revokes the supplied refresh token, not issued access tokens.
+- Current refresh rotation uses separate calls and is not atomic; do not infer replay/concurrency guarantees. Review races and failure paths when changing this flow.
+- Never log credentials, password hashes, access/refresh tokens, Authorization/cookie headers, private keys, credential-bearing connection strings, or authentication payloads.
+- Keep secrets outside source/image layers; do not expose internal exception details to clients. Safe logging is not a general-purpose secret scanner.
+- Never bypass or weaken validation, token checks, authorization, or secure error handling to simplify implementation or make tests pass.
+- For security changes, test both permitted behavior and rejection paths; explicitly assess expiry, revoked/inactive states, claims, and concurrency where relevant.
+
+## Testing and verification
+
+- Add/update behavior tests for changes to handlers, validation, business rules, and security. Bug fixes normally require a regression test; documentation-only edits need document checks.
+- Follow xUnit `[Fact]`/`[Theory]`, descriptive PascalCase test names, and Moq boundary mocks. Test observable behavior, not private structure; avoid redundant tests.
+- Cover success, expected failures, and relevant edges. Keep tests independent and deterministic; never weaken valid assertions to obtain a pass.
+- Reuse disposable RSA fixtures and existing test hosts. Some tests use ephemeral loopback ports/temp files; SQL dependencies are mocked. No live database integration suite exists here.
+- Run the narrowest useful tests first, then broader relevant checks for cross-cutting changes. Do not repeat passing checks without a new reason.
+- Commands from the repository root:
+
+```powershell
+dotnet test tests/JapaneseLearning.User.UnitTests/JapaneseLearning.User.UnitTests.csproj --filter "FullyQualifiedName~RelevantTestClass"
+dotnet build JapaneseLearning.User.sln
+dotnet test JapaneseLearning.User.sln
+```
+
+- Replace the filter placeholder with the actual class. Use `dotnet restore JapaneseLearning.User.sln` when restore is needed and allowed; do not use `--no-build` against stale outputs.
+- For documentation-only work, verify paths, commands, and claims against source and run `git diff --check`; do not start infrastructure or apply migrations just to verify documentation.
+- Report exactly what ran and its outcome. Never claim an unexecuted build/test passed; state blocked or omitted verification and why.
+
+## Minimal change policy
+
+- Modify only files needed for the task. Preserve unrelated working-tree changes; inspect `git status --short` before editing.
+- No unrelated refactoring, renaming, formatting, package upgrades, schema changes, or documentation files.
+- Do not change authentication behavior or public contracts incidentally. Prefer a small, coherent, reviewable diff.
+- Mention out-of-scope issues instead of silently fixing them. Never edit generated/build artifacts.
+
+## AI agent workflow
+
+1. Understand the request and constraints; clarify ambiguous/high-impact requirements before risky assumptions. Proceed autonomously on straightforward tasks.
+2. Identify the relevant modules, inspect local instructions and current changes, and read targeted implementation/convention examples.
+3. Reuse existing components and implement the smallest correct solution within the established boundaries.
+4. Add/update relevant tests and run appropriate verification.
+5. Review the diff for correctness, secrets, compatibility, and unrelated changes.
+6. Summarize the behavior change, verification, and remaining limitations concisely.
+
+## Communication and token efficiency
+
+- Be concise and technically precise; do not repeat the request or explain basic .NET concepts unless asked.
+- Give meaningful updates about findings, decisions, and blockers rather than narrating every command.
+- Show only relevant snippets; summarize behavior rather than entire files. Mention tradeoffs only when material.
+- Clearly distinguish verified results from assumptions and unresolved issues. Efficiency must not reduce correctness, maintainability, or security.
+
+## Prohibited practices
+
+- Do not invent files/features, duplicate existing business logic, overengineer requirements, or introduce unrelated architectural patterns.
+- Do not silently swallow exceptions; handle expected failures intentionally through established paths.
+- Do not hard-code secrets, bypass safeguards, change contracts without task justification, or report fabricated verification.
+- Do not perform destructive operations without explicit approval.
