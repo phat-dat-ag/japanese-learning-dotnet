@@ -41,6 +41,8 @@ public sealed class HealthEndpointTests(RsaKeyFixture fixture) : IClassFixture<R
             ["Jwt:PrivateKeyPath"] = fixture.PrivateKeyPath,
             ["Jwt:PublicKeyPath"] = fixture.PublicKeyPath,
             ["Jwt:KeyId"] = RsaKeyFixture.KeyId,
+            ["Jwt:JwksUrl"] = fixture.JwksUrl,
+            ["Jwt:RequireHttpsMetadata"] = "false",
             ["Jwt:Issuer"] = "JapaneseLearning.User",
             ["Jwt:Audience"] = "JapaneseLearning",
             ["Jwt:AccessTokenExpirationMinutes"] = "15",

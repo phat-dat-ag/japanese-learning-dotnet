@@ -48,7 +48,6 @@ public sealed class ApplicationMetrics
                 "api/auth/logout" => "logout",
                 "api/auth/me" => "me",
                 "api/auth/admin-test" => "admin",
-                ".well-known/jwks.json" => "jwks",
                 _ => "other"
             });
         options.ConfigureMeasurements(measurement => measurement.ExemplarPredicate = _ => false);

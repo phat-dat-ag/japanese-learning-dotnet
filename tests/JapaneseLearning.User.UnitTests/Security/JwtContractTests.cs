@@ -13,6 +13,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using System.Text.Json;
 
 namespace JapaneseLearning.User.UnitTests.Security;
 
@@ -236,11 +238,88 @@ public sealed class JwtContractTests(RsaKeyFixture fixture) : IClassFixture<RsaK
             service.HashRefreshToken(first.RefreshToken));
     }
 
+    [Fact]
+    public async Task UnknownKidIsRejectedEvenWhenSignatureMatchesPublishedKey()
+    {
+        using var provider = CreateProvider(CreateOptions());
+        var key = new RsaSecurityKey(fixture.Keys.SigningKey.Parameters) { KeyId = "unknown-key" };
+        var token = new JwtSecurityToken("JapaneseLearning.User", "JapaneseLearning",
+            [new Claim("sub", UserId.ToString()), new Claim("role", "User")],
+            expires: DateTime.UtcNow.AddMinutes(15),
+            signingCredentials: new SigningCredentials(key, SecurityAlgorithms.RsaSha256));
+        var signed = new JwtSecurityTokenHandler().WriteToken(token);
+        Assert.False((await Authenticate(provider, signed)).Succeeded);
+    }
+
+    [Fact]
+    public async Task CachedKeyWorksDuringOutageButColdVerifierFailsClosed()
+    {
+        using var provider = CreateProvider(CreateOptions());
+        var token = CreateService(CreateOptions()).CreateTokens(UserId, "learner", "learner@example.com", UserRole.User).AccessToken;
+        Assert.True((await Authenticate(provider, token)).Succeeded);
+        var requests = fixture.Requests;
+        fixture.Unavailable = true;
+        try
+        {
+            Assert.True((await Authenticate(provider, token)).Succeeded);
+            Assert.Equal(requests, fixture.Requests);
+            using var coldProvider = CreateProvider(CreateOptions());
+            Assert.False((await Authenticate(coldProvider, token)).Succeeded);
+        }
+        finally
+        {
+            fixture.Unavailable = false;
+        }
+    }
+
+    [Fact]
+    public async Task RemoteKeysAreAuthoritativeAndRefreshSupportsRotation()
+    {
+        using var rsa = RSA.Create(2048);
+        var next = new RsaSecurityKey(rsa) { KeyId = "rotated-key" };
+        var publicKey = JsonWebKeyConverter.ConvertFromRSASecurityKey(
+            new RsaSecurityKey(rsa.ExportParameters(false)) { KeyId = next.KeyId });
+        publicKey.Use = "sig";
+        publicKey.Alg = "RS256";
+        var original = fixture.PublishedJwks;
+        using var provider = CreateProvider(CreateOptions());
+        var oldToken = CreateService(CreateOptions()).CreateTokens(UserId, "learner", "learner@example.com", UserRole.User).AccessToken;
+        Assert.True((await Authenticate(provider, oldToken)).Succeeded);
+        fixture.PublishedJwks = JsonSerializer.Serialize(new { keys = new[] { publicKey } });
+        try
+        {
+            // The fresh verifier must not fall back to its local signing/public key.
+            using var coldProvider = CreateProvider(CreateOptions());
+            Assert.False((await Authenticate(coldProvider, oldToken)).Succeeded);
+            var token = new JwtSecurityToken("JapaneseLearning.User", "JapaneseLearning",
+                [new Claim("sub", UserId.ToString()), new Claim("role", "User")],
+                expires: DateTime.UtcNow.AddMinutes(15),
+                signingCredentials: new SigningCredentials(next, SecurityAlgorithms.RsaSha256));
+            var encoded = new JwtSecurityTokenHandler().WriteToken(token);
+            // Unknown-key verification requests a throttled background refresh.
+            await Authenticate(provider, encoded);
+            var manager = provider.GetRequiredService<IOptionsMonitor<JwtBearerOptions>>()
+                .Get(JwtBearerDefaults.AuthenticationScheme).ConfigurationManager!;
+            manager.RequestRefresh();
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            while (!(await manager.GetConfigurationAsync(timeout.Token)).SigningKeys.Any(k => k.KeyId == next.KeyId))
+                await Task.Delay(20, timeout.Token);
+            Assert.True((await Authenticate(provider, encoded)).Succeeded);
+            Assert.False((await Authenticate(provider, oldToken)).Succeeded);
+        }
+        finally
+        {
+            fixture.PublishedJwks = original;
+        }
+    }
+
     private JwtOptions CreateOptions() => new()
     {
         PrivateKeyPath = fixture.PrivateKeyPath,
         PublicKeyPath = fixture.PublicKeyPath,
         KeyId = RsaKeyFixture.KeyId,
+        JwksUrl = fixture.JwksUrl,
+        RequireHttpsMetadata = false,
         Issuer = "JapaneseLearning.User",
         Audience = "JapaneseLearning",
         AccessTokenExpirationMinutes = 15,
@@ -256,6 +335,8 @@ public sealed class JwtContractTests(RsaKeyFixture fixture) : IClassFixture<RsaK
             ["Jwt:PrivateKeyPath"] = options.PrivateKeyPath,
             ["Jwt:PublicKeyPath"] = options.PublicKeyPath,
             ["Jwt:KeyId"] = options.KeyId,
+            ["Jwt:JwksUrl"] = options.JwksUrl,
+            ["Jwt:RequireHttpsMetadata"] = options.RequireHttpsMetadata.ToString(),
             ["Jwt:Issuer"] = options.Issuer,
             ["Jwt:Audience"] = options.Audience,
             ["Jwt:AccessTokenExpirationMinutes"] = options.AccessTokenExpirationMinutes.ToString(),

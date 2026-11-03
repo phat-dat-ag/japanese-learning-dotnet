@@ -30,6 +30,9 @@ public sealed class JwtRsaStartupTests(RsaKeyFixture fixture) : IClassFixture<Rs
     [InlineData("Jwt:PrivateKeyPath", "", "private key path")]
     [InlineData("Jwt:PublicKeyPath", "", "public key path")]
     [InlineData("Jwt:KeyId", "", "key ID")]
+    [InlineData("Jwt:JwksUrl", "", "JWKS URL")]
+    [InlineData("Jwt:JwksUrl", "file:///tmp/key", "JWKS URL")]
+    [InlineData("Jwt:JwksUrl", "https://user:synthetic-secret@example.invalid/keys", "JWKS URL")]
     [InlineData("Jwt:PrivateKeyPath", "missing.pem", "private key file cannot be read")]
     [InlineData("Jwt:PublicKeyPath", "missing.pem", "public key file cannot be read")]
     [InlineData("Jwt:PrivateKeyPath", "invalid.pem", "private key file is not a valid")]
@@ -67,10 +70,12 @@ public sealed class JwtRsaStartupTests(RsaKeyFixture fixture) : IClassFixture<Rs
         {
             var service = app.Services.GetRequiredService<ITokenService>();
             var token = service.CreateTokens(Guid.NewGuid(), "learner", "learner@example.com", UserRole.User);
-            var parameters = app.Services.GetRequiredService<IOptionsMonitor<JwtBearerOptions>>()
-                .Get(JwtBearerDefaults.AuthenticationScheme).TokenValidationParameters;
-            var publicKey = Assert.IsType<RsaSecurityKey>(parameters.IssuerSigningKey);
-            Assert.Null(publicKey.Parameters.D);
+            var bearer = app.Services.GetRequiredService<IOptionsMonitor<JwtBearerOptions>>()
+                .Get(JwtBearerDefaults.AuthenticationScheme);
+            Assert.Null(bearer.TokenValidationParameters.IssuerSigningKey);
+            var parameters = bearer.TokenValidationParameters.Clone();
+            var remote = await bearer.ConfigurationManager!.GetConfigurationAsync(default);
+            parameters.IssuerSigningKeys = remote.SigningKeys;
             Assert.Equal(RsaKeyFixture.KeyId, new JwtSecurityTokenHandler().ReadJwtToken(token.AccessToken).Header.Kid);
             var principal = new JwtSecurityTokenHandler().ValidateToken(token.AccessToken, parameters, out _);
             Assert.True(principal.IsInRole("User"));
@@ -95,6 +100,8 @@ public sealed class JwtRsaStartupTests(RsaKeyFixture fixture) : IClassFixture<Rs
             ["Jwt:PrivateKeyPath"] = absolutePaths ? fixture.PrivateKeyPath : "private.pem",
             ["Jwt:PublicKeyPath"] = absolutePaths ? fixture.PublicKeyPath : "public.pem",
             ["Jwt:KeyId"] = RsaKeyFixture.KeyId,
+            ["Jwt:JwksUrl"] = fixture.JwksUrl,
+            ["Jwt:RequireHttpsMetadata"] = "false",
             ["Jwt:Issuer"] = "JapaneseLearning.User",
             ["Jwt:Audience"] = "JapaneseLearning",
             ["Jwt:AccessTokenExpirationMinutes"] = "15",

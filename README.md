@@ -2,7 +2,7 @@
 
 The .NET backend submodule of the Japanese Learning application provides account registration, login, access and refresh tokens, and claim-based user identity. Angular is the frontend; Quarkus owns vocabulary, flashcards, and the API Gateway. This repository contains the user service, not those clients or services.
 
-Implemented capabilities include active-user checks, User/Admin roles, RS256 access tokens, refresh-token rotation and logout, public JWKS, SQL Server persistence, structured logs, health probes, and Prometheus metrics. Email verification, password reset, account/profile editing, role administration, and OpenID Connect discovery are not implemented.
+Implemented capabilities include active-user checks, User/Admin roles, RS256 access tokens, refresh-token rotation and logout, remote JWKS verification, SQL Server persistence, structured logs, health probes, and Prometheus metrics. Email verification, password reset, account/profile editing, role administration, and OpenID Connect discovery are not implemented.
 
 ## Technology stack
 
@@ -75,7 +75,7 @@ With the HTTPS profile:
 
 - Swagger UI: https://localhost:7066/swagger
 - OpenAPI JSON: https://localhost:7066/swagger/v1/swagger.json
-- Public signing key: https://localhost:7066/.well-known/jwks.json
+- Public signing keys (independent service): http://localhost:8083/.well-known/jwks.json
 - Readiness: https://localhost:7066/health/ready
 
 A successful liveness response does not establish database readiness or migration completeness.
@@ -111,8 +111,10 @@ $env:Database__ConnectionString = 'Server=localhost;Database=JapaneseLearningUse
 | Setting | Default / requirement |
 | --- | --- |
 | `Jwt:PrivateKeyPath` | Required signing PEM path; blank in base settings |
-| `Jwt:PublicKeyPath` | Required matching validation PEM path; blank in base settings |
+| `Jwt:PublicKeyPath` | Required matching PEM for startup signing-pair integrity; blank in base settings |
 | `Jwt:KeyId` | Required; 1–128 ASCII letters, digits, hyphens, or underscores |
+| `Jwt:JwksUrl` | Required independent JWKS URL (`Jwt__JwksUrl` environment variable) |
+| `Jwt:RequireHttpsMetadata` | `true`; explicitly use `false` for trusted internal/local HTTP |
 | `Jwt:Issuer` | `JapaneseLearning.User` |
 | `Jwt:Audience` | `JapaneseLearning` |
 | `Jwt:AccessTokenExpirationMinutes` | 15; allowed range 1–1440 |
@@ -135,7 +137,7 @@ The loader imports PKCS#8/PKCS#1 private PEM and SubjectPublicKeyInfo/PKCS#1 pub
 - `Http:RedirectToHttps`: defaults to true in startup code; the Docker image sets it to false.
 - `AllowedHosts`: `*` in base settings.
 - `Serilog` and `LogFiles`: see [Logging and observability](#logging-and-observability).
-- No Angular origin, Quarkus URL, gateway URL, CORS policy, or outbound service client is configured here.
+- No Angular origin, Quarkus URL, gateway URL, or CORS policy is configured here. The JWT verifier uses the configured outbound JWKS client.
 
 ## Project structure
 
@@ -144,7 +146,7 @@ JapaneseLearning.User.sln
 src/
   JapaneseLearning.User.Api/
     Authentication/       JWT bearer validation
-    Controllers/          Authentication and JWKS endpoints
+    Controllers/          Authentication endpoints
     Common/               Errors, response types, correlation and logging
     Health/               Liveness/readiness mappings
     Observability/        Prometheus metrics
@@ -192,7 +194,9 @@ Refresh tokens contain 64 cryptographically random bytes encoded as Base64. Only
 
 Access tokens use **RS256**, a configured `kid` header, and claims `sub` (user GUID), `unique_name`, `email`, `role`, `jti`, `iss`, `aud`, and `exp`. Each issued token has a new `jti`.
 
-Bearer validation requires a signed, unexpired token with the configured issuer, audience, public signing key, and RS256 algorithm. Clock skew is zero. Standard inbound claim mapping supplies `ICurrentUser` with user ID, username, email, and role.
+Bearer validation retrieves public keys from the independent JWKS service configured by `Jwt:JwksUrl`; it never falls back to local signing keys or the legacy endpoint. It requires a signed, unexpired token with the configured issuer, audience, matching key ID, and RS256 algorithm. Clock skew is zero. Standard inbound claim mapping supplies `ICurrentUser` with user ID, username, email, and role.
+
+Development settings use `http://localhost:8083/.well-known/jwks.json`. Docker supplies `http://jwks-api:8080/.well-known/jwks.json`. IdentityModel caches configuration, refreshes automatically after 15 minutes on demand, and throttles refresh requests to one minute. HTTP retrieval has a five-second timeout. Key retrieval is lazy: startup and login do not require JWKS. A cold verifier or unknown key fails authentication during an outage; cached keys continue to validate signatures and claims. Last-known-good fallback to superseded configurations is disabled. For rotation, publish overlapping public keys with distinct IDs before switching the issuer, and retain the old public key until issued tokens expire plus cache/rollout time. The local pair is still loaded to check signing-key integrity at startup; .NET no longer publishes public keys.
 
 - `GET /api/auth/me` requires authentication and returns claims, without reloading the account.
 - `GET /api/auth/admin-test` requires the `Admin` role.
@@ -204,9 +208,9 @@ Bearer validation requires a signed, unexpired token with the configured issuer,
 
 Clients can log in through the JSON API and send `Authorization: Bearer <access-token>` on protected requests. Refresh/logout bodies use `{ "refreshToken": "<refresh-token>" }`. This service does not issue authentication cookies or implement frontend token storage.
 
-Anonymous `GET /.well-known/jwks.json` publishes one public RSA signing key as `keys[]`, with `kty`, `use`, `alg`, `kid`, `n`, and `e`. It exposes no private key material and does not reread files per request.
+Public RSA signing keys are published exclusively by the independent Spring JWKS service. The former .NET `GET /.well-known/jwks.json` route has been removed and returns 404.
 
-The JWKS endpoint provides the public-key contract for Quarkus/gateway verifiers. Such consumers must enforce signature, issuer, audience, expiration, and their own authorization rules; they do not need the private signing key. Actual gateway routing, JWKS caching, Quarkus role mapping, Angular token handling, and browser cross-origin behavior are outside this repository and cannot be established from this submodule.
+Configure public-key consumers to use the independent JWKS URL and enforce signature, issuer, audience, expiration, and their own authorization rules. Consumers never need the private signing key. The local public PEM remains required only to verify signing-pair integrity at startup.
 
 ## Database and persistence
 
@@ -242,13 +246,12 @@ Swagger UI is at `/swagger`, with JSON at `/swagger/v1/swagger.json`. In the cur
 | `POST /api/auth/logout` | Refresh token in body | 204, no body |
 | `GET /api/auth/me` | Bearer token | 200, current identity claims |
 | `GET /api/auth/admin-test` | Bearer token with Admin role | 200, role-check response |
-| `GET /.well-known/jwks.json` | Anonymous | 200, public JWKS |
 
 Use Swagger to register with `username`, `email`, and `password`, then log in with `email` and `password`. Enter the access token in Swagger's **Authorize** control before calling `me`. Swagger declares a global Bearer security requirement, although the server permits the anonymous operations listed above.
 
 ## Error handling and responses
 
-Successful authentication endpoints return their response objects directly in camelCase; they are **not** wrapped in `ApiResponse<T>`. Logout returns no body. JWKS, health checks, and metrics retain their own formats.
+Successful authentication endpoints return their response objects directly in camelCase; they are **not** wrapped in `ApiResponse<T>`. Logout returns no body. Health checks and metrics retain their own formats.
 
 Centralized exception handling maps validation failures to 400, authentication failures to 401, forbidden access to 403, missing resources to 404, conflicts to 409, and unexpected exceptions to a generic 500. Empty error statuses are also given a common JSON response.
 
@@ -309,7 +312,7 @@ The solution test command using `--no-build` assumes the preceding Release build
 
 ## Testing
 
-`JapaneseLearning.User.UnitTests` contains xUnit tests with Moq boundary substitutes. Coverage includes JWT claims and rejection rules, RSA startup validation, JWKS exposure, database option validation, authentication events, correlation/error handling, log formatting/retention, health failure/recovery, and metrics.
+`JapaneseLearning.User.UnitTests` contains xUnit tests with Moq boundary substitutes. Coverage includes JWT claims and rejection rules, RSA startup validation, remote JWKS caching/rotation and retired-route regression checks, database option validation, authentication events, correlation/error handling, log formatting/retention, health failure/recovery, and metrics.
 
 Despite the project name, some tests start local HTTP hosts on ephemeral loopback ports. Tests require temporary-file and loopback access. RSA fixtures create disposable keys in the OS temporary directory; SQL dependencies are mocked. There is no separate integration-test project or live SQL migration/repository test suite.
 
@@ -329,6 +332,8 @@ docker run --rm --name japanese-learning-user -p 8080:8080 `
   --env Jwt__PrivateKeyPath=/app/secrets/jwt/private.pem `
   --env Jwt__PublicKeyPath=/app/secrets/jwt/public.pem `
   --env Jwt__KeyId=japanese-learning-local-1 `
+  --env Jwt__JwksUrl `
+  --env Jwt__RequireHttpsMetadata `
   --mount "type=bind,source=C:/secure/japanese-learning,target=/app/secrets/jwt,readonly" `
   --mount "type=volume,source=japanese-learning-user-logs,target=/app/logs" `
   japanese-learning-user:local
