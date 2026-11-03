@@ -12,27 +12,9 @@ public sealed class JwtRsaKeys(
     IHostEnvironment environment) : IHostedService
 {
     private RsaSecurityKey? _signingKey;
-    private RsaSecurityKey? _validationKey;
 
     public RsaSecurityKey SigningKey => _signingKey
         ?? throw new InvalidOperationException("JWT RSA keys have not been loaded.");
-
-    public RsaSecurityKey ValidationKey => _validationKey
-        ?? throw new InvalidOperationException("JWT RSA keys have not been loaded.");
-
-    public JsonWebKey GetPublicJsonWebKey()
-    {
-        var key = ValidationKey;
-        return new JsonWebKey
-        {
-            Kty = "RSA",
-            Use = "sig",
-            Kid = key.KeyId,
-            Alg = SecurityAlgorithms.RsaSha256,
-            N = Base64UrlEncoder.Encode(key.Parameters.Modulus!),
-            E = Base64UrlEncoder.Encode(key.Parameters.Exponent!)
-        };
-    }
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -60,8 +42,6 @@ public sealed class JwtRsaKeys(
             throw ConfigurationError("JWT private and public key files do not contain a matching RSA key pair.");
 
         _signingKey = new RsaSecurityKey(privateParameters) { KeyId = configuration.KeyId };
-        // Export only public parameters: bearer validation never receives private parameters.
-        _validationKey = new RsaSecurityKey(publicKey.ExportParameters(false)) { KeyId = configuration.KeyId };
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;

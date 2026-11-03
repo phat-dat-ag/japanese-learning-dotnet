@@ -10,6 +10,10 @@ public sealed class JwtOptions
 
     public string KeyId { get; set; } = null!;
 
+    public string JwksUrl { get; set; } = null!;
+
+    public bool RequireHttpsMetadata { get; set; } = true;
+
     public string Issuer { get; set; } = null!;
 
     public string Audience { get; set; } = null!;

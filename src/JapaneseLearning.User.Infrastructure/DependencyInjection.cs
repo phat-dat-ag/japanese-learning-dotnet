@@ -37,6 +37,12 @@ public static class DependencyInjection
                     && options.KeyId.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_'),
                 "JWT key ID is missing or invalid; use 1-128 ASCII letters, digits, hyphens or underscores.")
             .Validate(
+                options => Uri.TryCreate(options.JwksUrl, UriKind.Absolute, out var uri)
+                    && (uri.Scheme == Uri.UriSchemeHttps
+                        || (!options.RequireHttpsMetadata && uri.Scheme == Uri.UriSchemeHttp))
+                    && string.IsNullOrEmpty(uri.UserInfo) && string.IsNullOrEmpty(uri.Fragment),
+                "JWT JWKS URL must be an absolute HTTPS URL (HTTP requires RequireHttpsMetadata=false), without credentials or fragment.")
+            .Validate(
                 options => IsSafeIdentifier(options.Issuer),
                 "JWT issuer is missing or invalid.")
             .Validate(

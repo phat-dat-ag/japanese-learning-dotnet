@@ -180,6 +180,8 @@ public sealed class CorrelationIdTests(RsaKeyFixture fixture) : IClassFixture<Rs
             {
                 options.Issuer = "test-issuer";
                 options.Audience = "test-audience";
+                options.JwksUrl = fixture.JwksUrl;
+                options.RequireHttpsMetadata = false;
             });
             builder.Services.AddJwtAuthentication();
             builder.Services.AddAuthorization();
