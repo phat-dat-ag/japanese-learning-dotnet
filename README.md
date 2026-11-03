@@ -46,7 +46,7 @@ Startup calls `AddApplication` and `AddInfrastructure` to register implementatio
 
 - Git and a .NET 9 SDK.
 - A reachable SQL Server instance and an existing application database with the migrations applied.
-- A matching, unencrypted RSA PEM key pair of at least 2048 bits, readable by the service.
+- Readable unencrypted RSA private PEMs of at least 2048 bits for indexed signing, or a matching public/private pair for legacy single-key signing.
 - A trusted ASP.NET Core development HTTPS certificate for the HTTPS launch profile.
 - Docker with Linux containers only if using the supplied Dockerfile.
 - An externally configured Flyway runner for database migrations.
@@ -108,10 +108,47 @@ $env:Database__ConnectionString = 'Server=localhost;Database=JapaneseLearningUse
 
 ### JWT settings
 
+Signing supports either the legacy single-key settings below or an indexed key
+list supplied through the parent Compose `env_file`. ASP.NET does not read dotenv
+files itself: Compose injects their entries into the container environment.
+
+```dotenv
+APP_SECURITY_SIGNING_KEYS_0_KID=user-rsa-v1
+APP_SECURITY_SIGNING_KEYS_0_PRIVATE_KEY_PATH=/run/keys/jwt/userservice-private-v1.pem
+APP_SECURITY_SIGNING_KEYS_0_ACTIVE=false
+APP_SECURITY_SIGNING_KEYS_1_KID=user-rsa-v2
+APP_SECURITY_SIGNING_KEYS_1_PRIVATE_KEY_PATH=/run/keys/jwt/userservice-private-v2.pem
+APP_SECURITY_SIGNING_KEYS_1_ACTIVE=true
+```
+
+Use contiguous indices from zero, unique IDs (same allowed characters as
+`Jwt:KeyId`), readable unencrypted RSA private PEMs of at least 2048 bits, and
+exactly one active entry. Every configured private key is checked at startup,
+including inactive entries; only the active key is retained for signing. Its
+`kid` is used in the JWT header. Publish its corresponding public key and ID in
+independent JWKS before activating it. Signing-key selection does not change
+JWT claims, RS256, lifetimes, refresh/logout, or remote verification.
+
+An indexed list takes precedence over legacy `Jwt:PrivateKeyPath`,
+`Jwt:PublicKeyPath`, and `Jwt:KeyId` for signing. List mode derives public
+parameters from each private key and does not require a separate local public
+PEM. Legacy mode still requires its matching public/private pair. Invalid lists
+fail startup; they never fall back to the legacy signer. Without a list, the
+existing single-key behavior is preserved. Standard `Jwt:SigningKeys` binding
+is also available; do not combine it with the `APP_SECURITY_SIGNING_KEYS_*` list.
+Keys are loaded once; recreate the process/container to change the active key.
+
+In the root project, copy `.env.user-api.example` to the ignored `.env.user-api`.
+The example deliberately uses the existing development key and ID. Set
+`USER_API_SIGNING_ENV_FILE` for an environment-specific file and
+`USER_API_SIGNING_KEYS_HOST_PATH` for the host signing-key directory. Compose
+mounts that directory read-only at `/run/keys/jwt`, only in .NET. Private keys
+must never be placed in the separate Spring JWKS public directory.
+
 | Setting | Default / requirement |
 | --- | --- |
-| `Jwt:PrivateKeyPath` | Required signing PEM path; blank in base settings |
-| `Jwt:PublicKeyPath` | Required matching PEM for startup signing-pair integrity; blank in base settings |
+| `Jwt:PrivateKeyPath` | Required legacy signing PEM path; blank in base settings |
+| `Jwt:PublicKeyPath` | Required legacy matching PEM for startup signing-pair integrity; blank in base settings |
 | `Jwt:KeyId` | Required; 1–128 ASCII letters, digits, hyphens, or underscores |
 | `Jwt:JwksUrl` | Required independent JWKS URL (`Jwt__JwksUrl` environment variable) |
 | `Jwt:RequireHttpsMetadata` | `true`; explicitly use `false` for trusted internal/local HTTP |

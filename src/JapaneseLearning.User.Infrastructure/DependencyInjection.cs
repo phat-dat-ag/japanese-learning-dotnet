@@ -8,6 +8,8 @@ using JapaneseLearning.User.Application.Abstractions.Persistence;
 using JapaneseLearning.User.Application.Abstractions.Security;
 using JapaneseLearning.User.Infrastructure.Persistence.Repositories;
 using JapaneseLearning.User.Infrastructure.Security;
+using System.Globalization;
+using System.Text.RegularExpressions;
 
 namespace JapaneseLearning.User.Infrastructure;
 
@@ -25,17 +27,28 @@ public static class DependencyInjection
 
         services
             .AddOptions<JwtOptions>()
-            .Configure(options => BindSafely(configuration.GetSection(JwtOptions.SectionName), options))
+            .Configure(options =>
+            {
+                BindSafely(configuration.GetSection(JwtOptions.SectionName), options);
+                BindSigningKeys(configuration, options);
+            })
             .Validate(
-                options => !string.IsNullOrWhiteSpace(options.PrivateKeyPath),
+                options => options.SigningKeys.Count > 0 || !string.IsNullOrWhiteSpace(options.PrivateKeyPath),
                 "JWT private key path is missing or empty.")
             .Validate(
-                options => !string.IsNullOrWhiteSpace(options.PublicKeyPath),
+                options => options.SigningKeys.Count > 0 || !string.IsNullOrWhiteSpace(options.PublicKeyPath),
                 "JWT public key path is missing or empty.")
             .Validate(
-                options => !string.IsNullOrWhiteSpace(options.KeyId) && options.KeyId.Length <= 128
-                    && options.KeyId.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_'),
+                options => options.SigningKeys.Count > 0 || IsValidKeyId(options.KeyId),
                 "JWT key ID is missing or invalid; use 1-128 ASCII letters, digits, hyphens or underscores.")
+            .Validate(
+                options => options.SigningKeys.Count == 0
+                    || (options.SigningKeys.Count(key => key.Active) == 1
+                        && options.SigningKeys.All(key => IsValidKeyId(key.Kid)
+                            && !string.IsNullOrWhiteSpace(key.PrivateKeyPath))
+                        && options.SigningKeys.Select(key => key.Kid).Distinct(StringComparer.Ordinal).Count()
+                            == options.SigningKeys.Count),
+                "JWT signing keys require unique valid key IDs, nonblank private key paths and exactly one active key.")
             .Validate(
                 options => Uri.TryCreate(options.JwksUrl, UriKind.Absolute, out var uri)
                     && (uri.Scheme == Uri.UriSchemeHttps
@@ -84,6 +97,53 @@ public static class DependencyInjection
 
     private static bool IsSafeIdentifier(string? value) =>
         !string.IsNullOrWhiteSpace(value) && value.Length <= 256 && !value.Any(char.IsControl);
+
+    private static bool IsValidKeyId(string? value) =>
+        !string.IsNullOrWhiteSpace(value) && value.Length <= 128
+        && value.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_');
+
+    private static void BindSigningKeys(IConfiguration configuration, JwtOptions options)
+    {
+        // ASP.NET's environment provider maps double underscores, not Spring-style
+        // single-underscore names. Adapt the explicit signing-key contract only.
+        var entries = new SortedDictionary<int, JwtSigningKeyOptions>();
+        foreach (var entry in configuration.AsEnumerable())
+        {
+            var match = Regex.Match(entry.Key,
+                "^APP_SECURITY_SIGNING_KEYS_([0-9]+)_(KID|PRIVATE_KEY_PATH|ACTIVE)$",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (!match.Success)
+            {
+                if (entry.Key.StartsWith("APP_SECURITY_SIGNING_KEYS_", StringComparison.OrdinalIgnoreCase))
+                    throw InvalidSigningKeys();
+                continue;
+            }
+            if (!int.TryParse(match.Groups[1].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var index))
+                throw InvalidSigningKeys();
+            if (!entries.TryGetValue(index, out var key))
+                entries[index] = key = new JwtSigningKeyOptions();
+            switch (match.Groups[2].Value.ToUpperInvariant())
+            {
+                case "KID": key.Kid = entry.Value ?? ""; break;
+                case "PRIVATE_KEY_PATH": key.PrivateKeyPath = entry.Value ?? ""; break;
+                case "ACTIVE":
+                    if (!bool.TryParse(entry.Value, out var active))
+                        throw InvalidSigningKeys();
+                    key.Active = active;
+                    break;
+            }
+        }
+        if (entries.Count == 0)
+            return;
+        if (options.SigningKeys.Count > 0
+            || !entries.Keys.SequenceEqual(Enumerable.Range(0, entries.Count)))
+            throw InvalidSigningKeys();
+        options.SigningKeys = entries.Values.ToList();
+    }
+
+    private static OptionsValidationException InvalidSigningKeys() =>
+        new(Options.DefaultName, typeof(JwtOptions),
+            ["JWT signing-key configuration is invalid. Use one list source, contiguous indices starting at zero and boolean active flags."]);
 
     private static void BindSafely<T>(IConfigurationSection section, T options) where T : class
     {
