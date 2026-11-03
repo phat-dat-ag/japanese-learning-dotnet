@@ -10,6 +10,8 @@ public sealed class JwtOptions
 
     public string KeyId { get; set; } = null!;
 
+    public List<JwtSigningKeyOptions> SigningKeys { get; set; } = [];
+
     public string JwksUrl { get; set; } = null!;
 
     public bool RequireHttpsMetadata { get; set; } = true;

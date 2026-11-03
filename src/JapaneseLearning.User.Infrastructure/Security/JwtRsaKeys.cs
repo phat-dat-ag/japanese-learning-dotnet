@@ -19,20 +19,30 @@ public sealed class JwtRsaKeys(
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         var configuration = options.Value;
+        if (configuration.SigningKeys.Count > 0)
+        {
+            if (configuration.SigningKeys.Count(key => key.Active) != 1)
+                throw ConfigurationError("Exactly one JWT signing key must be active.");
+            RsaSecurityKey? activeKey = null;
+            // Validate every configured private key, including inactive rotation keys.
+            // Retain only the active signing material after startup.
+            foreach (var key in configuration.SigningKeys)
+            {
+                using var rsa = await LoadKeyAsync(key.PrivateKeyPath, "private", cancellationToken);
+                var parameters = ExportSigningParameters(rsa);
+                if (key.Active)
+                    activeKey = new RsaSecurityKey(parameters) { KeyId = key.Kid };
+            }
+            _signingKey = activeKey
+                ?? throw ConfigurationError("Exactly one JWT signing key must be active.");
+            return;
+        }
         using var privateKey = await LoadKeyAsync(
             configuration.PrivateKeyPath, "private", cancellationToken);
         using var publicKey = await LoadKeyAsync(
             configuration.PublicKeyPath, "public", cancellationToken);
 
-        RSAParameters privateParameters;
-        try
-        {
-            privateParameters = privateKey.ExportParameters(true);
-        }
-        catch (CryptographicException)
-        {
-            throw ConfigurationError("JWT private key file must contain an RSA private key.");
-        }
+        var privateParameters = ExportSigningParameters(privateKey);
 
         if (privateKey.KeySize < 2048 || publicKey.KeySize < 2048)
             throw ConfigurationError("JWT RSA keys must be at least 2048 bits.");
@@ -45,6 +55,21 @@ public sealed class JwtRsaKeys(
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    private static RSAParameters ExportSigningParameters(RSA rsa)
+    {
+        try
+        {
+            var parameters = rsa.ExportParameters(true);
+            if (rsa.KeySize < 2048)
+                throw ConfigurationError("JWT RSA keys must be at least 2048 bits.");
+            return parameters;
+        }
+        catch (CryptographicException)
+        {
+            throw ConfigurationError("JWT private key file must contain an RSA private key.");
+        }
+    }
 
     private async Task<RSA> LoadKeyAsync(string configuredPath, string kind, CancellationToken cancellationToken)
     {
