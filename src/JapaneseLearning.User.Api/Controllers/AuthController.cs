@@ -26,7 +26,7 @@ public sealed class AuthController : ControllerBase
 
     [HttpPost("register")]
     [ProducesResponseType(
-        typeof(RegisterResponse),
+        typeof(ApiResponse<RegisterResponse>),
         StatusCodes.Status201Created)]
     [ProducesResponseType(
         typeof(ApiResponse<object>),
@@ -42,12 +42,12 @@ public sealed class AuthController : ControllerBase
 
         return StatusCode(
             StatusCodes.Status201Created,
-            result);
+            ApiResponse<RegisterResponse>.Ok(result, HttpContext));
     }
 
     [HttpPost("login")]
     [ProducesResponseType(
-        typeof(LoginResponse),
+        typeof(ApiResponse<LoginResponse>),
         StatusCodes.Status200OK)]
     [ProducesResponseType(
         typeof(ApiResponse<object>),
@@ -63,12 +63,12 @@ public sealed class AuthController : ControllerBase
             command,
             cancellationToken);
 
-        return Ok(result);
+        return Ok(ApiResponse<LoginResponse>.Ok(result, HttpContext));
     }
 
     [HttpPost("refresh")]
     [ProducesResponseType(
-    typeof(RefreshTokenResponse),
+    typeof(ApiResponse<RefreshTokenResponse>),
     StatusCodes.Status200OK)]
     [ProducesResponseType(
     typeof(ApiResponse<object>),
@@ -81,7 +81,7 @@ public sealed class AuthController : ControllerBase
             command,
             cancellationToken);
 
-        return Ok(result);
+        return Ok(ApiResponse<RefreshTokenResponse>.Ok(result, HttpContext));
     }
 
     [HttpPost("logout")]
@@ -100,31 +100,23 @@ public sealed class AuthController : ControllerBase
 
     [Authorize]
     [HttpGet("me")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<CurrentUserResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status401Unauthorized)]
     public IActionResult Me()
     {
-        return Ok(new
-        {
-            UserId = _currentUser.UserId,
-            Username = _currentUser.Username,
-            Email = _currentUser.Email,
-            Role = _currentUser.Role
-        });
+        var result = new CurrentUserResponse(_currentUser.UserId, _currentUser.Username,
+            _currentUser.Email, _currentUser.Role);
+        return Ok(ApiResponse<CurrentUserResponse>.Ok(result, HttpContext));
     }
 
     [Authorize(Roles = "Admin")]
     [HttpGet("admin-test")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<AdminTestResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status403Forbidden)]
     public IActionResult AdminTest()
     {
-        return Ok(new
-        {
-            Message = "You are an admin.",
-            UserId = _currentUser.UserId,
-            Role = _currentUser.Role
-        });
+        var result = new AdminTestResponse("You are an admin.", _currentUser.UserId, _currentUser.Role);
+        return Ok(ApiResponse<AdminTestResponse>.Ok(result, HttpContext));
     }
 }
