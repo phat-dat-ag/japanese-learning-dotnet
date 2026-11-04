@@ -14,8 +14,6 @@ public sealed class GlobalExceptionHandler(
         Exception exception,
         CancellationToken cancellationToken)
     {
-        var traceId = httpContext.TraceIdentifier;
-
         var (statusCode, error) = exception switch
         {
             NotFoundException ex => (
@@ -74,7 +72,7 @@ public sealed class GlobalExceptionHandler(
 
         var response = ApiResponse<object>.Fail(
             error,
-            traceId);
+            httpContext);
 
         httpContext.Response.StatusCode = statusCode;
         httpContext.Response.ContentType = "application/json";

@@ -50,7 +50,7 @@ public sealed class CorrelationIdTests(RsaKeyFixture fixture) : IClassFixture<Rs
             if (path is "/error" or "/validation" or "/missing")
             {
                 using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-                Assert.Equal(id, body.RootElement.GetProperty("traceId").GetString());
+                AssertMetadata(body.RootElement, response, id);
             }
             else if (path == "/ok") Assert.Equal(id, await response.Content.ReadAsStringAsync());
             Assert.Contains(host.Logs.Entries, e => e.Contains(id) && e.Contains("HTTP request completed"));
@@ -161,6 +161,21 @@ public sealed class CorrelationIdTests(RsaKeyFixture fixture) : IClassFixture<Rs
         Assert.Contains("HandlerMethod=Validate", completed);
     }
 
+    [Fact]
+    public async Task ErrorMetadataUsesDistributedTraceAndKeepsCorrelationSeparate()
+    {
+        await using var host = await TestHost.Start(fixture);
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/conflict");
+        request.Headers.Add("X-Correlation-ID", "error-contract");
+        request.Headers.Add("traceparent", "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01");
+        using var response = await host.Client.SendAsync(request);
+        await AssertError(response, 409, "TEST_CONFLICT");
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("4bf92f3577b34da6a3ce929d0e0e4736", body.RootElement.GetProperty("meta").GetProperty("traceId").GetString());
+        Assert.Contains(host.Logs.Entries, entry => entry.Contains("error-contract")
+            && entry.Contains("TraceId=4bf92f3577b34da6a3ce929d0e0e4736"));
+    }
+
     private string Token(string role, bool expired = false) => new JwtSecurityTokenHandler().WriteToken(
         new JwtSecurityToken("test-issuer", "test-audience", new[] { new Claim("role", role) },
             expires: DateTime.UtcNow.AddMinutes(expired ? -1 : 5),
@@ -177,7 +192,23 @@ public sealed class CorrelationIdTests(RsaKeyFixture fixture) : IClassFixture<Rs
         using var body = JsonDocument.Parse(text);
         Assert.False(body.RootElement.GetProperty("success").GetBoolean());
         Assert.Equal(code, body.RootElement.GetProperty("error").GetProperty("code").GetString());
-        Assert.Equal("error-contract", body.RootElement.GetProperty("traceId").GetString());
+        Assert.Equal(JsonValueKind.Array, body.RootElement.GetProperty("error").GetProperty("details").ValueKind);
+        Assert.False(body.RootElement.TryGetProperty("data", out _));
+        AssertMetadata(body.RootElement, response, "error-contract");
+    }
+
+    private static void AssertMetadata(JsonElement body, HttpResponseMessage response, string correlationId)
+    {
+        Assert.False(body.TryGetProperty("traceId", out _));
+        var meta = body.GetProperty("meta");
+        Assert.Equal(correlationId, meta.GetProperty("correlationId").GetString());
+        var traceId = meta.GetProperty("traceId").GetString();
+        Assert.Matches("^[a-f0-9]{32}$", traceId!);
+        Assert.NotEqual(new string('0', 32), traceId);
+        Assert.Equal(traceId, Assert.Single(response.Headers.GetValues(CorrelationIdMiddleware.DistributedTraceHeaderName)));
+        var timestamp = meta.GetProperty("timestamp").GetDateTimeOffset();
+        Assert.Equal(TimeSpan.Zero, timestamp.Offset);
+        Assert.InRange(DateTimeOffset.UtcNow - timestamp, TimeSpan.FromMinutes(-1), TimeSpan.FromMinutes(3));
     }
 
     private sealed class TestHost(WebApplication app, HttpClient client, CapturingLogs logs) : IAsyncDisposable

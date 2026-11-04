@@ -288,9 +288,25 @@ Successful authentication endpoints return their response objects directly in ca
 
 Centralized exception handling maps validation failures to 400, authentication failures to 401, forbidden access to 403, missing resources to 404, conflicts to 409, and unexpected exceptions to a generic 500. Empty error statuses are also given a common JSON response.
 
-Error envelopes contain `success: false`, `error` with `code`, `message`, optional field `details`, and `traceId`. Null properties may be omitted for MVC responses; clients should not depend on their presence. FluentValidation errors contain field details, while malformed/model-binding failures use a generic validation message. Unexpected errors do not expose exception messages or stack traces.
+Error envelopes match the Quarkus structure: `success: false`, `error` with `code`, `message`, and a `details` array, plus `meta` containing UTC `timestamp`, `traceId`, and `correlationId`. Absent field details are `[]`; `data` and the former top-level `traceId` are omitted consistently in both MVC and middleware responses. FluentValidation errors contain field details, while malformed/model-binding failures use a generic validation message. Unexpected errors do not expose exception messages or stack traces.
 
-`traceId` in the error envelope is the correlation ID returned in `X-Correlation-ID`. It is distinct from the distributed Activity trace ID used in logs.
+`meta.correlationId` matches `X-Correlation-ID` and the log's `CorrelationId`; `meta.traceId` matches the distributed Activity trace ID in logs and the response header `X-Distributed-Trace-Id`. An incoming W3C `traceparent` continues that trace. Missing Activity context gets a request-scoped generated trace ID. Existing clients using the former top-level `traceId` must read `meta.correlationId` instead; success DTOs and the empty 204 logout response have not changed. Angular's existing Quarkus-style error parser already accepts this envelope.
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "Authentication is required.",
+    "details": []
+  },
+  "meta": {
+    "timestamp": "2026-11-04T08:00:00Z",
+    "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+    "correlationId": "request-123"
+  }
+}
+```
 
 ## Logging and observability
 
