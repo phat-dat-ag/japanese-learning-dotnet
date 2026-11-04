@@ -1,5 +1,6 @@
 using JapaneseLearning.User.Api.Common.Responses;
 using Microsoft.AspNetCore.Mvc;
+using JapaneseLearning.User.Api.Common.Logging;
 
 namespace JapaneseLearning.User.Api.Common.Errors;
 
@@ -11,9 +12,13 @@ public static class ApiErrorHandling
         services.PostConfigure<ApiBehaviorOptions>(options =>
         {
             options.SuppressMapClientErrors = true;
-            options.InvalidModelStateResponseFactory = context => new BadRequestObjectResult(
-                ApiResponse<object>.Fail(new ApiError("VALIDATION_ERROR",
-                    "One or more validation errors occurred."), context.HttpContext.TraceIdentifier));
+            options.InvalidModelStateResponseFactory = context =>
+            {
+                context.HttpContext.Items[CorrelationIdMiddleware.ErrorCodeKey] = "VALIDATION_ERROR";
+                return new BadRequestObjectResult(
+                    ApiResponse<object>.Fail(new ApiError("VALIDATION_ERROR",
+                        "One or more validation errors occurred."), context.HttpContext));
+            };
         });
         return services;
     }
@@ -24,8 +29,10 @@ public static class ApiErrorHandling
         return app.UseStatusCodePages(async context =>
         {
             var http = context.HttpContext;
+            var error = ForStatus(http.Response.StatusCode);
+            http.Items[CorrelationIdMiddleware.ErrorCodeKey] = error.Code;
             await http.Response.WriteAsJsonAsync(
-                ApiResponse<object>.Fail(ForStatus(http.Response.StatusCode), http.TraceIdentifier),
+                ApiResponse<object>.Fail(error, http),
                 http.RequestAborted);
         });
     }

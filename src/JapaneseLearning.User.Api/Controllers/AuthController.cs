@@ -6,11 +6,13 @@ using JapaneseLearning.User.Application.Abstractions.Security;
 using Microsoft.AspNetCore.Authorization;
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
+using JapaneseLearning.User.Api.Common.Responses;
 
 namespace JapaneseLearning.User.Api.Controllers;
 
 [ApiController]
 [Route("api/auth")]
+[ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status500InternalServerError)]
 public sealed class AuthController : ControllerBase
 {
     private readonly ISender _sender;
@@ -27,7 +29,9 @@ public sealed class AuthController : ControllerBase
         typeof(RegisterResponse),
         StatusCodes.Status201Created)]
     [ProducesResponseType(
+        typeof(ApiResponse<object>),
         StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Register(
         [FromBody] RegisterCommand command,
         CancellationToken cancellationToken)
@@ -46,8 +50,10 @@ public sealed class AuthController : ControllerBase
         typeof(LoginResponse),
         StatusCodes.Status200OK)]
     [ProducesResponseType(
+        typeof(ApiResponse<object>),
         StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(
+        typeof(ApiResponse<object>),
         StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Login(
         [FromBody] LoginCommand command,
@@ -65,6 +71,7 @@ public sealed class AuthController : ControllerBase
     typeof(RefreshTokenResponse),
     StatusCodes.Status200OK)]
     [ProducesResponseType(
+    typeof(ApiResponse<object>),
     StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> Refresh(
         [FromBody] RefreshTokenCommand command,
@@ -79,7 +86,7 @@ public sealed class AuthController : ControllerBase
 
     [HttpPost("logout")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> Logout(
         [FromBody] LogoutCommand command,
         CancellationToken cancellationToken)
@@ -94,7 +101,7 @@ public sealed class AuthController : ControllerBase
     [Authorize]
     [HttpGet("me")]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status401Unauthorized)]
     public IActionResult Me()
     {
         return Ok(new
@@ -109,8 +116,8 @@ public sealed class AuthController : ControllerBase
     [Authorize(Roles = "Admin")]
     [HttpGet("admin-test")]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status403Forbidden)]
     public IActionResult AdminTest()
     {
         return Ok(new

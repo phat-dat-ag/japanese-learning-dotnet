@@ -14,6 +14,8 @@ public sealed class CorrelationIdMiddleware(
     public const string CallerServiceHeaderName = "X-Caller-Service";
     public const string ErrorCodeKey = "Logging.ErrorCode";
     public const string ExceptionTypeKey = "Logging.ExceptionType";
+    public const string TraceIdKey = "Logging.TraceId";
+    public const string DistributedTraceHeaderName = "X-Distributed-Trace-Id";
     private readonly int _slowRequestMilliseconds = ReadSlowThreshold(configuration);
 
     private static int ReadSlowThreshold(IConfiguration? configuration)
@@ -30,13 +32,17 @@ public sealed class CorrelationIdMiddleware(
         var candidate = values.Count == 1 ? values[0] : null;
         var correlationId = IsValid(candidate) ? candidate! : Guid.NewGuid().ToString("N");
 
-        // Existing response/error contracts already expose TraceIdentifier.
+        var traceId = Activity.Current?.TraceId is { } trace && trace != default
+            ? trace.ToString() : ActivityTraceId.CreateRandom().ToString();
+        context.Items[TraceIdKey] = traceId;
+        // TraceIdentifier remains the validated correlation ID for existing callers.
         var requestId = context.TraceIdentifier;
         
         context.TraceIdentifier = correlationId;
         context.Response.OnStarting(() =>
         {
             context.Response.Headers[HeaderName] = correlationId;
+            context.Response.Headers[DistributedTraceHeaderName] = traceId;
             return Task.CompletedTask;
         });
 
@@ -49,7 +55,7 @@ public sealed class CorrelationIdMiddleware(
         using var scope = logger.BeginScope(new Dictionary<string, object?>
         {
             ["CorrelationId"] = correlationId,
-            ["TraceId"] = Activity.Current?.TraceId.ToString() ?? string.Empty,
+            ["TraceId"] = traceId,
             ["SpanId"] = Activity.Current?.SpanId.ToString() ?? string.Empty,
             ["ParentSpanId"] = Activity.Current?.ParentSpanId.ToString() ?? string.Empty,
             ["RequestId"] = requestId,
