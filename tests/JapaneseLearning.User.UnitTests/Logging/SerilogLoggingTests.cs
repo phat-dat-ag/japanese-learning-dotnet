@@ -6,6 +6,8 @@ using JapaneseLearning.User.Api.Common.Logging;
 using JapaneseLearning.User.Application.Auth.Login;
 using JapaneseLearning.User.Application.Common.Behaviors;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
+using Microsoft.AspNetCore.Routing.Patterns;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
@@ -29,6 +31,8 @@ public sealed class SerilogLoggingTests
         var context = new DefaultHttpContext();
         context.Request.Method = "POST";
         context.Request.Path = "/api/auth/login";
+        context.SetEndpoint(new RouteEndpoint(_ => Task.CompletedTask,
+            RoutePatternFactory.Parse("/api/auth/login"), 0, EndpointMetadataCollection.Empty, "Login"));
         context.Request.QueryString = new QueryString("?password=credential-sentinel");
         context.Request.Headers["Authorization"] = "Bearer credential-sentinel";
         context.Request.Headers["Cookie"] = "credential-sentinel";
@@ -54,7 +58,7 @@ public sealed class SerilogLoggingTests
             Assert.Equal(activity.SpanId.ToString(), ((ScalarValue)entry.Properties["SpanId"]).Value);
             Assert.DoesNotContain("credential-sentinel", Format(entry));
         }
-        var completed = Assert.Single(sink.Events, entry => entry.Properties.ContainsKey("StatusCode"));
+        var completed = Assert.Single(sink.Events, entry => entry.MessageTemplate.Text.StartsWith("HTTP request completed"));
         Assert.Equal(500, ((ScalarValue)completed.Properties["StatusCode"]).Value);
         Assert.Equal("/api/auth/login", ((ScalarValue)completed.Properties["RequestPath"]).Value);
         context.Response.Body.Position = 0;

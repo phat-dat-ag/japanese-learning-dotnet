@@ -17,6 +17,14 @@ public sealed class SafeJsonFormatter : ITextFormatter
             logEvent.MessageTemplate,
             logEvent.Properties.Select(property => new LogEventProperty(property.Key, property.Value)),
             logEvent.TraceId ?? default, logEvent.SpanId ?? default);
+       
+        if (logEvent.Properties.TryGetValue("EventId", out var eventId) && eventId is StructureValue eventFields)
+        {
+            var name = eventFields.Properties.FirstOrDefault(property => property.Name == "Name");
+            if (name is not null)
+                safeEvent.AddOrUpdateProperty(new LogEventProperty("EventName", name.Value));
+        }
+       
         if (logEvent.Exception is { } exception)
         {
             safeEvent.AddOrUpdateProperty(new LogEventProperty("ExceptionType",

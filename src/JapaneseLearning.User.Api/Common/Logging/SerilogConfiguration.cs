@@ -20,6 +20,9 @@ public static class SerilogConfiguration
             .Enrich.FromLogContext()
             .Enrich.WithProperty("ServiceName", environment.ApplicationName)
             .Enrich.WithProperty("Environment", environment.EnvironmentName)
+            .Enrich.WithProperty("ServiceVersion", typeof(SerilogConfiguration).Assembly.GetName().Version?.ToString() ?? "unknown")
+            .Enrich.WithProperty("ServiceInstanceId", Environment.MachineName)
+            .Enrich.WithProperty("LogSchemaVersion", 1)
             // Keep one request event and prevent framework dumps of raw exception messages.
             .Filter.ByExcluding(log => log.Properties.TryGetValue("SourceContext", out var source) &&
                 source is Serilog.Events.ScalarValue { Value: string category } &&

@@ -78,8 +78,8 @@ try
 
     var app = builder.Build();
 
-    app.UseMiddleware<CorrelationIdMiddleware>();
     app.UseRouting();
+    app.UseMiddleware<CorrelationIdMiddleware>();
     app.UseApplicationMetrics();
     app.UseApiErrorHandling();
 

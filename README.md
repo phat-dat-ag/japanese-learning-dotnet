@@ -296,7 +296,21 @@ Error envelopes contain `success: false`, `error` with `code`, `message`, option
 
 Serilog writes newline-delimited JSON to console and rolling files, while application code uses `ILogger<T>`. A bootstrap logger captures startup failures. Events include service/environment, correlation, Activity trace/span IDs when present, structured request completion, MediatR timing, and authentication outcomes.
 
-The middleware accepts a single `X-Correlation-ID` containing 1–64 ASCII letters, digits, underscores, or hyphens; otherwise it creates one. Request logs omit query strings, headers, and bodies. Safe exception diagnostics retain selected types/frames and SQL error metadata while excluding arbitrary messages and data. Do not add credentials, tokens, hashes, private keys, or authentication payloads to logs; the formatter is not a general secret scanner.
+The middleware accepts a single `X-Correlation-ID` containing 1–64 ASCII letters, digits, underscores, or hyphens; otherwise it creates one. Request logs omit query strings, arbitrary headers, and bodies. `RequestPath` and `RequestRoute` contain the matched route template (`/unmatched` when no route matches), avoiding arbitrary path values. Safe exception diagnostics retain selected types/frames and SQL error metadata while excluding arbitrary messages and data. Do not add credentials, tokens, hashes, private keys, or authentication payloads to logs; the formatter is not a general secret scanner.
+
+Request scopes attach HTTP method, route, controller/action and handler method/type, server request/connection IDs, network protocol, scheme, direct peer address/port, correlation ID, Activity trace/span/parent-span IDs. Hosting extracts W3C `traceparent`; callers should propagate it alongside `X-Correlation-ID`. An optional `X-Caller-Service` must be a single value with the same character/length rules as the correlation ID. It is recorded as `ClaimedCallerService` (otherwise `unknown`), not authenticated service identity. Forwarded IP headers are not trusted by this logging code; behind a gateway, `PeerAddress` identifies the direct peer.
+
+Completion events include numeric status/duration, content lengths when known, authenticated user ID when available, `Outcome`, `ErrorCode`, `ExceptionType`, `IsSlow`, and response-started state. All 4xx/5xx and slow requests produce Warning summaries; the central handler owns the single Error diagnostic for unexpected failures. Client disconnects are logged with synthetic status 499 and `CLIENT_CLOSED_REQUEST`; logging does not change the response status. MediatR operation events carry `OperationName`/`RequestType`, timing and success/failure/cancellation, without serializing commands. Controller methods identify API entry points; safe exception frames identify deeper failing methods. Routine method-by-method payload logging is intentionally avoided.
+
+For collectors, the JSON envelope retains `Timestamp`, `Level`, `MessageTemplate`, `RenderedMessage`, and nested `Properties`. Named event IDs also produce `Properties.EventName`. Common metadata includes `ServiceName`, `Environment`, assembly `ServiceVersion`, `ServiceInstanceId` (host/container name), and `LogSchemaVersion=1`. Existing IDs remain; application operation IDs are 1100 started, 1101 completed, 1102 failed, and 1103 cancelled. Validation can reject a command before the operation behavior runs; the HTTP summary still records the failure.
+
+Example request event (abbreviated; values are illustrative):
+
+```json
+{"Timestamp":"2026-11-04T08:00:00Z","Level":"Warning","MessageTemplate":"HTTP request completed: {RequestMethod} {RequestPath} with status {StatusCode} in {ElapsedMilliseconds}ms for {UserId}","Properties":{"EventName":"HttpRequestCompleted","ServiceName":"JapaneseLearning.User.Api","LogSchemaVersion":1,"CorrelationId":"request-123","TraceId":"4bf92f3577b34da6a3ce929d0e0e4736","ClaimedCallerService":"vocabulary-api","RequestMethod":"POST","RequestRoute":"api/auth/login","Controller":"Auth","Action":"Login","HandlerMethod":"Login","StatusCode":401,"ElapsedMilliseconds":24.5,"Outcome":"failure","ErrorCode":"INVALID_CREDENTIALS","IsSlow":false}}
+```
+
+Fluent Bit can parse each line as JSON and extract nested properties. Use low-cardinality Loki labels such as service and environment; keep correlation/trace/user IDs as searchable fields. Collect either console output or rolling files to avoid duplicate ingestion. No Fluent Bit/Loki service or tracing exporter is installed by these logging changes.
 
 | Configuration key | Default |
 | --- | --- |
@@ -305,6 +319,7 @@ The middleware accepts a single `X-Correlation-ID` containing 1–64 ASCII lette
 | `LogFiles:FileSizeLimitBytes` | 104857600 (100 MiB) |
 | `LogFiles:RetainedFileCountLimit` | 300 |
 | `Serilog:MinimumLevel:Default` | `Information` |
+| `Logging:SlowRequestThresholdMilliseconds` | 1000; positive integer, env `Logging__SlowRequestThresholdMilliseconds` |
 | `Serilog:MinimumLevel:Override:JapaneseLearning.User` | `Information`; `Debug` in Development |
 
 Files use `user-api-YYYYMMDD.json`, with suffixes for size rolls. Age and count limits both apply; high volume can shorten retained history. Retention is applied on file opening/rolling, not by a background cleanup service. Restart after changing file settings. Microsoft/System levels default to Warning, with hosting lifecycle events at Information.
