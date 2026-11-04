@@ -38,9 +38,9 @@ public sealed class HealthEndpointTests(RsaKeyFixture fixture) : IClassFixture<R
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["Database:ConnectionString"] = "Server=unused;Database=unused;Integrated Security=True",
-            ["Jwt:PrivateKeyPath"] = fixture.PrivateKeyPath,
-            ["Jwt:PublicKeyPath"] = fixture.PublicKeyPath,
-            ["Jwt:KeyId"] = RsaKeyFixture.KeyId,
+            ["Jwt:SigningKeys:0:PrivateKeyPath"] = fixture.PrivateKeyPath,
+            ["Jwt:SigningKeys:0:Kid"] = RsaKeyFixture.KeyId,
+            ["Jwt:SigningKeys:0:Active"] = "true",
             ["Jwt:JwksUrl"] = fixture.JwksUrl,
             ["Jwt:RequireHttpsMetadata"] = "false",
             ["Jwt:Issuer"] = "JapaneseLearning.User",

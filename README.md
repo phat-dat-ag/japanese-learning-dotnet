@@ -46,7 +46,7 @@ Startup calls `AddApplication` and `AddInfrastructure` to register implementatio
 
 - Git and a .NET 9 SDK.
 - A reachable SQL Server instance and an existing application database with the migrations applied.
-- Readable unencrypted RSA private PEMs of at least 2048 bits for indexed signing, or a matching public/private pair for legacy single-key signing.
+- Readable unencrypted RSA private PEMs of at least 2048 bits configured in a nonempty indexed signing list.
 - A trusted ASP.NET Core development HTTPS certificate for the HTTPS launch profile.
 - Docker with Linux containers only if using the supplied Dockerfile.
 - An externally configured Flyway runner for database migrations.
@@ -108,8 +108,7 @@ $env:Database__ConnectionString = 'Server=localhost;Database=JapaneseLearningUse
 
 ### JWT settings
 
-Signing supports either the legacy single-key settings below or an indexed key
-list supplied through the parent Compose `env_file`. ASP.NET does not read dotenv
+Signing requires an indexed private-key list supplied through the parent Compose `env_file`. ASP.NET does not read dotenv
 files itself: Compose injects their entries into the container environment.
 
 ```dotenv
@@ -121,22 +120,19 @@ APP_SECURITY_SIGNING_KEYS_1_PRIVATE_KEY_PATH=/run/keys/jwt/userservice-private-v
 APP_SECURITY_SIGNING_KEYS_1_ACTIVE=true
 ```
 
-Use contiguous indices from zero, unique IDs (same allowed characters as
-`Jwt:KeyId`), readable unencrypted RSA private PEMs of at least 2048 bits, and
+Use contiguous indices from zero, unique IDs (1-128 ASCII letters, digits, hyphens or underscores), readable unencrypted RSA private PEMs of at least 2048 bits, and
 exactly one active entry. Every configured private key is checked at startup,
 including inactive entries; only the active key is retained for signing. Its
 `kid` is used in the JWT header. Publish its corresponding public key and ID in
 independent JWKS before activating it. Signing-key selection does not change
 JWT claims, RS256, lifetimes, refresh/logout, or remote verification.
 
-An indexed list takes precedence over legacy `Jwt:PrivateKeyPath`,
-`Jwt:PublicKeyPath`, and `Jwt:KeyId` for signing. List mode derives public
-parameters from each private key and does not require a separate local public
-PEM. Legacy mode still requires its matching public/private pair. Invalid lists
-fail startup; they never fall back to the legacy signer. Without a list, the
-existing single-key behavior is preserved. Standard `Jwt:SigningKeys` binding
-is also available; do not combine it with the `APP_SECURITY_SIGNING_KEYS_*` list.
-Keys are loaded once; recreate the process/container to change the active key.
+The signing list is mandatory. Missing entries, invalid keys or anything other
+than one active key fail startup. Public parameters are derived from the private
+key; .NET does not mount or load public PEM files. JWT verification still fetches
+public keys from independent JWKS. Standard `Jwt:SigningKeys` binding is also
+available; do not combine it with the `APP_SECURITY_SIGNING_KEYS_*` list.
+Recreate the process/container after changing signing keys or the active flag.
 
 In the root project, copy `.env.user-api.example` to the ignored `.env.user-api`.
 The example deliberately uses the existing development key and ID. Set
@@ -147,9 +143,6 @@ must never be placed in the separate Spring JWKS public directory.
 
 | Setting | Default / requirement |
 | --- | --- |
-| `Jwt:PrivateKeyPath` | Required legacy signing PEM path; blank in base settings |
-| `Jwt:PublicKeyPath` | Required legacy matching PEM for startup signing-pair integrity; blank in base settings |
-| `Jwt:KeyId` | Required; 1–128 ASCII letters, digits, hyphens, or underscores |
 | `Jwt:JwksUrl` | Required independent JWKS URL (`Jwt__JwksUrl` environment variable) |
 | `Jwt:RequireHttpsMetadata` | `true`; explicitly use `false` for trusted internal/local HTTP |
 | `Jwt:Issuer` | `JapaneseLearning.User` |
@@ -159,15 +152,18 @@ must never be placed in the separate Spring JWKS public directory.
 
 Issuer and audience must be nonblank, at most 256 characters, and contain no control characters. `Jwt:Secret` is not used.
 
-Development defaults are `../../../secrets/jwt/private.pem`, `../../../secrets/jwt/public.pem`, and key ID `japanese-learning-local-1`. Paths resolve relative to the application's **content root**, normally `src/JapaneseLearning.User.Api`, so these defaults point to `secrets/jwt` in the parent of this .NET checkout. Obtain the pair from your environment provisioning, or override with absolute paths:
+Native Development also requires an explicit signing list; no signing paths or
+IDs are supplied by appsettings. For example, from the parent root checkout:
 
 ```powershell
-$env:Jwt__PrivateKeyPath = 'C:/secure/japanese-learning/private.pem'
-$env:Jwt__PublicKeyPath = 'C:/secure/japanese-learning/public.pem'
-$env:Jwt__KeyId = 'japanese-learning-local-1'
+$env:APP_SECURITY_SIGNING_KEYS_0_KID = 'japanese-learning-local-1'
+$env:APP_SECURITY_SIGNING_KEYS_0_PRIVATE_KEY_PATH = (Resolve-Path secrets/private/user-api/private.pem).Path
+$env:APP_SECURITY_SIGNING_KEYS_0_ACTIVE = 'true'
 ```
 
-The loader imports PKCS#8/PKCS#1 private PEM and SubjectPublicKeyInfo/PKCS#1 public PEM, verifies key size and pairing, and loads keys once before serving HTTP. Missing/unreadable files, encrypted or invalid PEM, mismatched keys, and invalid options stop startup. Restart after changing keys or token settings. Automatic key rotation and overlapping published keys are not implemented.
+The loader imports PKCS#8/PKCS#1 unencrypted RSA private PEMs, validates every
+configured key and minimum size, and loads the active signer once before HTTP
+starts. No separate public-key file or local public/private pair check is used.
 
 ### Other settings
 
@@ -233,7 +229,7 @@ Access tokens use **RS256**, a configured `kid` header, and claims `sub` (user G
 
 Bearer validation retrieves public keys from the independent JWKS service configured by `Jwt:JwksUrl`; it never falls back to local signing keys or the legacy endpoint. It requires a signed, unexpired token with the configured issuer, audience, matching key ID, and RS256 algorithm. Clock skew is zero. Standard inbound claim mapping supplies `ICurrentUser` with user ID, username, email, and role.
 
-Development settings use `http://localhost:8083/.well-known/jwks.json`. Docker supplies `http://jwks-api:8080/.well-known/jwks.json`. IdentityModel caches configuration, refreshes automatically after 15 minutes on demand, and throttles refresh requests to one minute. HTTP retrieval has a five-second timeout. Key retrieval is lazy: startup and login do not require JWKS. A cold verifier or unknown key fails authentication during an outage; cached keys continue to validate signatures and claims. Last-known-good fallback to superseded configurations is disabled. For rotation, publish overlapping public keys with distinct IDs before switching the issuer, and retain the old public key until issued tokens expire plus cache/rollout time. The local pair is still loaded to check signing-key integrity at startup; .NET no longer publishes public keys.
+Development settings use `http://localhost:8083/.well-known/jwks.json`. Docker supplies `http://jwks-api:8080/.well-known/jwks.json`. IdentityModel caches configuration, refreshes automatically after 15 minutes on demand, and throttles refresh requests to one minute. HTTP retrieval has a five-second timeout. Key retrieval is lazy: startup and login do not require JWKS. A cold verifier or unknown key fails authentication during an outage; cached keys continue to validate signatures and claims. Last-known-good fallback to superseded configurations is disabled. For rotation, publish overlapping public keys with distinct IDs before switching the issuer, and retain the old public key until issued tokens expire plus cache/rollout time. Private signing keys are validated at startup; public verification keys come exclusively from JWKS.
 
 - `GET /api/auth/me` requires authentication and returns claims, without reloading the account.
 - `GET /api/auth/admin-test` requires the `Admin` role.
@@ -247,7 +243,7 @@ Clients can log in through the JSON API and send `Authorization: Bearer <access-
 
 Public RSA signing keys are published exclusively by the independent Spring JWKS service. The former .NET `GET /.well-known/jwks.json` route has been removed and returns 404.
 
-Configure public-key consumers to use the independent JWKS URL and enforce signature, issuer, audience, expiration, and their own authorization rules. Consumers never need the private signing key. The local public PEM remains required only to verify signing-pair integrity at startup.
+Configure public-key consumers to use the independent JWKS URL and enforce signature, issuer, audience, expiration, and their own authorization rules. Consumers never need the private signing key. .NET does not require a local public PEM.
 
 ## Database and persistence
 
@@ -366,17 +362,15 @@ Example standalone PowerShell invocation, after setting `Database__ConnectionStr
 ```powershell
 docker run --rm --name japanese-learning-user -p 8080:8080 `
   --env Database__ConnectionString `
-  --env Jwt__PrivateKeyPath=/app/secrets/jwt/private.pem `
-  --env Jwt__PublicKeyPath=/app/secrets/jwt/public.pem `
-  --env Jwt__KeyId=japanese-learning-local-1 `
+  --env-file .env.user-api `
   --env Jwt__JwksUrl `
   --env Jwt__RequireHttpsMetadata `
-  --mount "type=bind,source=C:/secure/japanese-learning,target=/app/secrets/jwt,readonly" `
+  --mount "type=bind,source=C:/secure/japanese-learning/private/user-api,target=/run/keys/jwt,readonly" `
   --mount "type=volume,source=japanese-learning-user-logs,target=/app/logs" `
   japanese-learning-user:local
 ```
 
-Replace the host key directory with the provisioned directory containing the matching PEM files and grant the container user read/traversal permissions. The SQL hostname must be reachable from the container; `localhost` refers to the container itself. Issuer, audience, and lifetimes retain base defaults unless overridden.
+Replace the host key directory with the provisioned directory containing the configured private PEM files and grant the container user read/traversal permissions. The SQL hostname must be reachable from the container; `localhost` refers to the container itself. Issuer, audience, and lifetimes retain base defaults unless overridden.
 
 The image creates writable `/app/logs`; use a persistent volume for retained logs and separate storage per replica. `.dockerignore` excludes key/secret files, environment-specific settings, tests, migrations, and generated output. Keys are mounted at runtime, not baked into the image.
 
@@ -387,7 +381,7 @@ Valid database options and RSA keys are required before HTTP starts. A later SQL
 | Symptom | Check |
 | --- | --- |
 | Startup rejects database configuration | Choose complete connection string or all split settings, not both; include server, database, and valid authentication |
-| Startup rejects JWT configuration | Check key paths relative to content root, permissions, unencrypted PEM, matching pair, minimum 2048-bit size, key ID, and lifetime ranges |
+| Startup rejects JWT configuration | Check key paths relative to content root, permissions, unencrypted private PEMs, minimum 2048-bit size, unique key IDs, exactly one active key, and lifetime ranges |
 | Readiness is 503 | Check SQL reachability, database existence, credentials, and certificate trust; liveness does not test SQL |
 | Readiness is healthy but account operations fail | Verify all V1–V4 migrations and stored procedures are present in the configured database |
 | Protected endpoint returns 401 | Check Bearer header, RS256 signature, issuer/audience, expiry, and clocks; there is no clock-skew allowance |

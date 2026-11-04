@@ -4,12 +4,6 @@ public sealed class JwtOptions
 {
     public const string SectionName = "Jwt";
 
-    public string PrivateKeyPath { get; set; } = null!;
-
-    public string PublicKeyPath { get; set; } = null!;
-
-    public string KeyId { get; set; } = null!;
-
     public List<JwtSigningKeyOptions> SigningKeys { get; set; } = [];
 
     public string JwksUrl { get; set; } = null!;
