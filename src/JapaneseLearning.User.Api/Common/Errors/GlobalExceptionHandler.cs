@@ -55,6 +55,16 @@ public sealed class GlobalExceptionHandler(
                     "An unexpected error occurred."))
         };
 
+        httpContext.Items[CorrelationIdMiddleware.ErrorCodeKey] = error.Code;
+        httpContext.Items[CorrelationIdMiddleware.ExceptionTypeKey] = exception.GetType().FullName;
+        
+        using var scope = logger.BeginScope(new Dictionary<string, object>
+        {
+            ["ErrorCode"] = error.Code,
+            ["StatusCode"] = statusCode,
+            ["Outcome"] = "failure"
+        });
+
         if (statusCode >= 500)
         {
             logger.LogError(new EventId(5000, "UnhandledException"),

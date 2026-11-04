@@ -142,6 +142,25 @@ public sealed class CorrelationIdTests(RsaKeyFixture fixture) : IClassFixture<Rs
         Assert.DoesNotContain(host.Logs.Entries, line => line.Contains("credential-sentinel"));
     }
 
+    [Fact]
+    public async Task IncomingServiceTraceAndControllerMetadataAreAvailableInRequestLogs()
+    {
+        await using var host = await TestHost.Start(fixture);
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/validation?value=ok");
+        request.Headers.Add("X-Correlation-ID", "service-call-123");
+        request.Headers.Add("X-Caller-Service", "vocabulary-api");
+        request.Headers.Add("traceparent", "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01");
+        using var response = await host.Client.SendAsync(request);
+        Assert.True(response.IsSuccessStatusCode);
+        var completed = Assert.Single(host.Logs.Entries,
+            line => line.Contains("service-call-123") && line.Contains("HTTP request completed"));
+        Assert.Contains("TraceId=4bf92f3577b34da6a3ce929d0e0e4736", completed);
+        Assert.Contains("ParentSpanId=00f067aa0ba902b7", completed);
+        Assert.Contains("ClaimedCallerService=vocabulary-api", completed);
+        Assert.Contains("Controller=CorrelationValidation", completed);
+        Assert.Contains("HandlerMethod=Validate", completed);
+    }
+
     private string Token(string role, bool expired = false) => new JwtSecurityTokenHandler().WriteToken(
         new JwtSecurityToken("test-issuer", "test-audience", new[] { new Claim("role", role) },
             expires: DateTime.UtcNow.AddMinutes(expired ? -1 : 5),
