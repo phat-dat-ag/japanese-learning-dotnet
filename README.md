@@ -284,13 +284,34 @@ Use Swagger to register with `username`, `email`, and `password`, then log in wi
 
 ## Error handling and responses
 
-Successful authentication endpoints return their response objects directly in camelCase; they are **not** wrapped in `ApiResponse<T>`. Logout returns no body. Health checks and metrics retain their own formats.
+Registration, login, refresh, `me`, and `admin-test` return `{ "success": true, "data": ..., "meta": ... }`. Their existing camelCase DTO fields now appear inside `data`; HTTP status codes are unchanged (201 for registration, 200 for the others). `meta` contains the same UTC timestamp, distributed trace ID and correlation ID as error responses. Logout remains 204 with no body and exposes IDs through response headers. Health checks and metrics retain their own formats.
 
 Centralized exception handling maps validation failures to 400, authentication failures to 401, forbidden access to 403, missing resources to 404, conflicts to 409, and unexpected exceptions to a generic 500. Empty error statuses are also given a common JSON response.
 
 Error envelopes match the Quarkus structure: `success: false`, `error` with `code`, `message`, and a `details` array, plus `meta` containing UTC `timestamp`, `traceId`, and `correlationId`. Absent field details are `[]`; `data` and the former top-level `traceId` are omitted consistently in both MVC and middleware responses. FluentValidation errors contain field details, while malformed/model-binding failures use a generic validation message. Unexpected errors do not expose exception messages or stack traces.
 
-`meta.correlationId` matches `X-Correlation-ID` and the log's `CorrelationId`; `meta.traceId` matches the distributed Activity trace ID in logs and the response header `X-Distributed-Trace-Id`. An incoming W3C `traceparent` continues that trace. Missing Activity context gets a request-scoped generated trace ID. Existing clients using the former top-level `traceId` must read `meta.correlationId` instead; success DTOs and the empty 204 logout response have not changed. Angular's existing Quarkus-style error parser already accepts this envelope.
+`meta.correlationId` matches `X-Correlation-ID` and the log's `CorrelationId`; `meta.traceId` matches the distributed Activity trace ID in logs and the response header `X-Distributed-Trace-Id`. An incoming W3C `traceparent` continues that trace. Missing Activity context gets a request-scoped generated trace ID. Existing clients using the former top-level `traceId` must read `meta.correlationId` instead. Success callers must read DTOs from `data`; the updated Angular auth client unwraps the envelope and also accepts legacy plain DTOs during rolling deployment. Deploy the frontend before the backend, or update them together.
+
+Example successful `/api/auth/me` response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "userId": "6255fdb2-ea35-47c8-b7e0-8c2cbc11e103",
+    "username": "sample-user",
+    "email": "user@example.com",
+    "role": "User"
+  },
+  "meta": {
+    "timestamp": "2026-11-04T08:00:00Z",
+    "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+    "correlationId": "request-123"
+  }
+}
+```
+
+Example error response:
 
 ```json
 {
