@@ -37,10 +37,6 @@ public sealed class SigningKeyListTests(RsaKeyFixture fixture) : IClassFixture<R
         var settings = Settings();
         settings["APP_SECURITY_SIGNING_KEYS_0_ACTIVE"] = (activeIndex == 0).ToString();
         settings["APP_SECURITY_SIGNING_KEYS_1_ACTIVE"] = (activeIndex == 1).ToString();
-        // List mode must not use or require the legacy key ID/PEM options.
-        settings["Jwt:PrivateKeyPath"] = "unused.pem";
-        settings["Jwt:PublicKeyPath"] = "unused-public.pem";
-        settings["Jwt:KeyId"] = "legacy-unused";
         using var provider = Provider(settings);
         await provider.GetRequiredService<JwtRsaKeys>().StartAsync(default);
         var userId = Guid.NewGuid();
@@ -79,6 +75,8 @@ public sealed class SigningKeyListTests(RsaKeyFixture fixture) : IClassFixture<R
     }
 
     [Theory]
+    [InlineData("missing-list", "exactly one active")]
+    [InlineData("legacy-only", "exactly one active")]
     [InlineData("no-active", "exactly one active")]
     [InlineData("two-active", "exactly one active")]
     [InlineData("duplicate-kid", "unique valid key IDs")]
@@ -98,6 +96,17 @@ public sealed class SigningKeyListTests(RsaKeyFixture fixture) : IClassFixture<R
         var settings = Settings();
         switch (scenario)
         {
+            case "missing-list":
+            case "legacy-only":
+                foreach (var key in settings.Keys.Where(k => k.StartsWith("APP_SECURITY_SIGNING_KEYS_")).ToArray())
+                    settings.Remove(key);
+                if (scenario == "legacy-only")
+                {
+                    settings["Jwt:PrivateKeyPath"] = fixture.PrivateKeyPath;
+                    settings["Jwt:PublicKeyPath"] = fixture.PublicKeyPath;
+                    settings["Jwt:KeyId"] = "retired-setting";
+                }
+                break;
             case "no-active": settings["APP_SECURITY_SIGNING_KEYS_1_ACTIVE"] = "false"; break;
             case "two-active": settings["APP_SECURITY_SIGNING_KEYS_0_ACTIVE"] = "true"; break;
             case "duplicate-kid": settings["APP_SECURITY_SIGNING_KEYS_1_KID"] = "user-rsa-v1"; break;

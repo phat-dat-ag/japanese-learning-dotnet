@@ -42,7 +42,7 @@ public sealed class JwtContractTests(RsaKeyFixture fixture) : IClassFixture<RsaK
         Assert.Equal(options.Issuer, token.Issuer);
         Assert.Equal(options.Audience, Assert.Single(token.Audiences));
         Assert.Equal(SecurityAlgorithms.RsaSha256, token.Header.Alg);
-        Assert.Equal(options.KeyId, token.Header.Kid);
+        Assert.Equal(options.SigningKeys.Single(key => key.Active).Kid, token.Header.Kid);
         Assert.InRange(token.ValidTo, before.AddMinutes(15).AddSeconds(-1), after.AddMinutes(15));
         Assert.Equal(900, result.AccessTokenExpiresIn);
     }
@@ -217,7 +217,7 @@ public sealed class JwtContractTests(RsaKeyFixture fixture) : IClassFixture<RsaK
         var token = new JwtSecurityToken(options.Issuer, options.Audience,
             expires: DateTime.UtcNow.AddMinutes(15),
             signingCredentials: new SigningCredentials(
-                new SymmetricSecurityKey(RandomNumberGenerator.GetBytes(32)) { KeyId = options.KeyId },
+                new SymmetricSecurityKey(RandomNumberGenerator.GetBytes(32)) { KeyId = options.SigningKeys.Single(key => key.Active).Kid },
                 SecurityAlgorithms.HmacSha256));
 
         Assert.False((await Authenticate(provider, new JwtSecurityTokenHandler().WriteToken(token))).Succeeded);
@@ -315,9 +315,7 @@ public sealed class JwtContractTests(RsaKeyFixture fixture) : IClassFixture<RsaK
 
     private JwtOptions CreateOptions() => new()
     {
-        PrivateKeyPath = fixture.PrivateKeyPath,
-        PublicKeyPath = fixture.PublicKeyPath,
-        KeyId = RsaKeyFixture.KeyId,
+        SigningKeys = [new JwtSigningKeyOptions { PrivateKeyPath = fixture.PrivateKeyPath, Kid = RsaKeyFixture.KeyId, Active = true }],
         JwksUrl = fixture.JwksUrl,
         RequireHttpsMetadata = false,
         Issuer = "JapaneseLearning.User",
@@ -332,9 +330,9 @@ public sealed class JwtContractTests(RsaKeyFixture fixture) : IClassFixture<RsaK
     private static IConfiguration CreateConfiguration(JwtOptions options) =>
         new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
-            ["Jwt:PrivateKeyPath"] = options.PrivateKeyPath,
-            ["Jwt:PublicKeyPath"] = options.PublicKeyPath,
-            ["Jwt:KeyId"] = options.KeyId,
+            ["Jwt:SigningKeys:0:PrivateKeyPath"] = options.SigningKeys[0].PrivateKeyPath,
+            ["Jwt:SigningKeys:0:Kid"] = options.SigningKeys[0].Kid,
+            ["Jwt:SigningKeys:0:Active"] = options.SigningKeys[0].Active.ToString(),
             ["Jwt:JwksUrl"] = options.JwksUrl,
             ["Jwt:RequireHttpsMetadata"] = options.RequireHttpsMetadata.ToString(),
             ["Jwt:Issuer"] = options.Issuer,
@@ -369,7 +367,7 @@ public sealed class JwtContractTests(RsaKeyFixture fixture) : IClassFixture<RsaK
         var now = DateTime.UtcNow;
         using var otherRsa = RSA.Create(2048);
         var key = scenario == "signature"
-            ? new RsaSecurityKey(otherRsa) { KeyId = options.KeyId }
+            ? new RsaSecurityKey(otherRsa) { KeyId = options.SigningKeys.Single(key => key.Active).Kid }
             : fixture.Keys.SigningKey;
         var token = new JwtSecurityToken(
             issuer: scenario == "issuer" ? "Wrong.Issuer" : options.Issuer,

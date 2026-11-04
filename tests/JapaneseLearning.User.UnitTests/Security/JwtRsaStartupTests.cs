@@ -1,5 +1,4 @@
 using System.IdentityModel.Tokens.Jwt;
-using System.Security.Cryptography;
 using JapaneseLearning.User.Api.Authentication;
 using JapaneseLearning.User.Application.Abstractions.Security;
 using JapaneseLearning.User.Domain.Users;
@@ -24,20 +23,17 @@ public sealed class JwtRsaStartupTests(RsaKeyFixture fixture) : IClassFixture<Rs
     [InlineData("Jwt:AccessTokenExpirationMinutes", "0", "lifetime")]
     [InlineData("Jwt:RefreshTokenExpirationDays", "0", "lifetime")]
     [InlineData("Jwt:RefreshTokenExpirationDays", "999999999", "lifetime")]
-    [InlineData("Jwt:KeyId", "unsafe\nsynthetic-secret", "key ID")]
+    [InlineData("Jwt:SigningKeys:0:Kid", "unsafe\nsynthetic-secret", "unique valid key IDs")]
     [InlineData("Jwt:Issuer", "", "issuer")]
     [InlineData("Jwt:Audience", "", "audience")]
-    [InlineData("Jwt:PrivateKeyPath", "", "private key path")]
-    [InlineData("Jwt:PublicKeyPath", "", "public key path")]
-    [InlineData("Jwt:KeyId", "", "key ID")]
+    [InlineData("Jwt:SigningKeys:0:PrivateKeyPath", "", "nonblank private key paths")]
+    [InlineData("Jwt:SigningKeys:0:Kid", "", "unique valid key IDs")]
     [InlineData("Jwt:JwksUrl", "", "JWKS URL")]
     [InlineData("Jwt:JwksUrl", "file:///tmp/key", "JWKS URL")]
     [InlineData("Jwt:JwksUrl", "https://user:synthetic-secret@example.invalid/keys", "JWKS URL")]
-    [InlineData("Jwt:PrivateKeyPath", "missing.pem", "private key file cannot be read")]
-    [InlineData("Jwt:PublicKeyPath", "missing.pem", "public key file cannot be read")]
-    [InlineData("Jwt:PrivateKeyPath", "invalid.pem", "private key file is not a valid")]
-    [InlineData("Jwt:PublicKeyPath", "invalid.pem", "public key file is not a valid")]
-    [InlineData("Jwt:PrivateKeyPath", "public.pem", "must contain an RSA private key")]
+    [InlineData("Jwt:SigningKeys:0:PrivateKeyPath", "missing.pem", "private key file cannot be read")]
+    [InlineData("Jwt:SigningKeys:0:PrivateKeyPath", "invalid.pem", "private key file is not a valid")]
+    [InlineData("Jwt:SigningKeys:0:PrivateKeyPath", "public.pem", "must contain an RSA private key")]
     public async Task InvalidConfigurationFailsDuringStartup(string key, string value, string message)
     {
         await File.WriteAllTextAsync(Path.Combine(fixture.DirectoryPath, "invalid.pem"), "invalid PEM");
@@ -45,18 +41,6 @@ public sealed class JwtRsaStartupTests(RsaKeyFixture fixture) : IClassFixture<Rs
         var exception = await Assert.ThrowsAsync<OptionsValidationException>(() => app.StartAsync());
         Assert.Contains(message, exception.Message);
         Assert.DoesNotContain("synthetic-secret", exception.ToString());
-    }
-
-    [Fact]
-    public async Task MismatchedKeyPairFailsDuringStartup()
-    {
-        using var otherRsa = RSA.Create(2048);
-        await File.WriteAllTextAsync(Path.Combine(fixture.DirectoryPath, "other-public.pem"),
-            otherRsa.ExportSubjectPublicKeyInfoPem());
-        await using var app = CreateApplication("Jwt:PublicKeyPath", "other-public.pem");
-
-        var exception = await Assert.ThrowsAsync<OptionsValidationException>(() => app.StartAsync());
-        Assert.Contains("matching RSA key pair", exception.Message);
     }
 
     [Theory]
@@ -97,9 +81,9 @@ public sealed class JwtRsaStartupTests(RsaKeyFixture fixture) : IClassFixture<Rs
         var configuration = new Dictionary<string, string?>
         {
             ["Database:ConnectionString"] = "Server=unused;Database=unused;Integrated Security=True",
-            ["Jwt:PrivateKeyPath"] = absolutePaths ? fixture.PrivateKeyPath : "private.pem",
-            ["Jwt:PublicKeyPath"] = absolutePaths ? fixture.PublicKeyPath : "public.pem",
-            ["Jwt:KeyId"] = RsaKeyFixture.KeyId,
+            ["Jwt:SigningKeys:0:PrivateKeyPath"] = absolutePaths ? fixture.PrivateKeyPath : "private.pem",
+            ["Jwt:SigningKeys:0:Kid"] = RsaKeyFixture.KeyId,
+            ["Jwt:SigningKeys:0:Active"] = "true",
             ["Jwt:JwksUrl"] = fixture.JwksUrl,
             ["Jwt:RequireHttpsMetadata"] = "false",
             ["Jwt:Issuer"] = "JapaneseLearning.User",

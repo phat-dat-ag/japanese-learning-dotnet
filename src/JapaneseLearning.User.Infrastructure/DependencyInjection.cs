@@ -33,21 +33,12 @@ public static class DependencyInjection
                 BindSigningKeys(configuration, options);
             })
             .Validate(
-                options => options.SigningKeys.Count > 0 || !string.IsNullOrWhiteSpace(options.PrivateKeyPath),
-                "JWT private key path is missing or empty.")
-            .Validate(
-                options => options.SigningKeys.Count > 0 || !string.IsNullOrWhiteSpace(options.PublicKeyPath),
-                "JWT public key path is missing or empty.")
-            .Validate(
-                options => options.SigningKeys.Count > 0 || IsValidKeyId(options.KeyId),
-                "JWT key ID is missing or invalid; use 1-128 ASCII letters, digits, hyphens or underscores.")
-            .Validate(
-                options => options.SigningKeys.Count == 0
-                    || (options.SigningKeys.Count(key => key.Active) == 1
-                        && options.SigningKeys.All(key => IsValidKeyId(key.Kid)
-                            && !string.IsNullOrWhiteSpace(key.PrivateKeyPath))
-                        && options.SigningKeys.Select(key => key.Kid).Distinct(StringComparer.Ordinal).Count()
-                            == options.SigningKeys.Count),
+                options => options.SigningKeys.Count > 0
+                    && options.SigningKeys.Count(key => key.Active) == 1
+                    && options.SigningKeys.All(key => IsValidKeyId(key.Kid)
+                        && !string.IsNullOrWhiteSpace(key.PrivateKeyPath))
+                    && options.SigningKeys.Select(key => key.Kid).Distinct(StringComparer.Ordinal).Count()
+                        == options.SigningKeys.Count,
                 "JWT signing keys require unique valid key IDs, nonblank private key paths and exactly one active key.")
             .Validate(
                 options => Uri.TryCreate(options.JwksUrl, UriKind.Absolute, out var uri)

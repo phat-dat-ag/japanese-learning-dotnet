@@ -37,9 +37,7 @@ public sealed class RsaKeyFixture : IAsyncLifetime
         await File.WriteAllTextAsync(PublicKeyPath, rsa.ExportSubjectPublicKeyInfoPem());
         Keys = new JwtRsaKeys(Options.Create(new JwtOptions
         {
-            PrivateKeyPath = PrivateKeyPath,
-            PublicKeyPath = PublicKeyPath,
-            KeyId = KeyId
+            SigningKeys = [new JwtSigningKeyOptions { PrivateKeyPath = PrivateKeyPath, Kid = KeyId, Active = true }]
         }), Mock.Of<IHostEnvironment>(environment => environment.ContentRootPath == DirectoryPath));
         await Keys.StartAsync(CancellationToken.None);
         var publicJwk = JsonWebKeyConverter.ConvertFromRSASecurityKey(
