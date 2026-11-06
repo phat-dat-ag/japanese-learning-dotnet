@@ -75,7 +75,7 @@ With the HTTPS profile:
 
 - Swagger UI: https://localhost:7066/swagger
 - OpenAPI JSON: https://localhost:7066/swagger/v1/swagger.json
-- Public signing keys (independent service): http://localhost:8083/.well-known/jwks.json
+- Public signing keys (independent service): http://localhost:8083/api/v1/jwks/user
 - Readiness: https://localhost:7066/health/ready
 
 A successful liveness response does not establish database readiness or migration completeness.
@@ -229,7 +229,7 @@ Access tokens use **RS256**, a configured `kid` header, and claims `sub` (user G
 
 Bearer validation retrieves public keys from the independent JWKS service configured by `Jwt:JwksUrl`; it never falls back to local signing keys or the legacy endpoint. It requires a signed, unexpired token with the configured issuer, audience, matching key ID, and RS256 algorithm. Clock skew is zero. Standard inbound claim mapping supplies `ICurrentUser` with user ID, username, email, and role.
 
-Development settings use `http://localhost:8083/.well-known/jwks.json`. Docker supplies `http://jwks-api:8080/.well-known/jwks.json`. IdentityModel caches configuration, refreshes automatically after 15 minutes on demand, and throttles refresh requests to one minute. HTTP retrieval has a five-second timeout. Key retrieval is lazy: startup and login do not require JWKS. A cold verifier or unknown key fails authentication during an outage; cached keys continue to validate signatures and claims. Last-known-good fallback to superseded configurations is disabled. For rotation, publish overlapping public keys with distinct IDs before switching the issuer, and retain the old public key until issued tokens expire plus cache/rollout time. Private signing keys are validated at startup; public verification keys come exclusively from JWKS.
+Development settings use `http://localhost:8083/api/v1/jwks/user`. Docker supplies `http://jwks-api:8080/api/v1/jwks/user`. IdentityModel caches configuration, refreshes automatically after 15 minutes on demand, and throttles refresh requests to one minute. HTTP retrieval has a five-second timeout. Key retrieval is lazy: startup and login do not require JWKS. A cold verifier or unknown key fails authentication during an outage; cached keys continue to validate signatures and claims. Last-known-good fallback to superseded configurations is disabled. For rotation, publish overlapping public keys with distinct IDs before switching the issuer, and retain the old public key until issued tokens expire plus cache/rollout time. Private signing keys are validated at startup; public verification keys come exclusively from JWKS.
 
 - `GET /api/auth/me` requires authentication and returns claims, without reloading the account.
 - `GET /api/auth/admin-test` requires the `Admin` role.
@@ -241,7 +241,7 @@ Development settings use `http://localhost:8083/.well-known/jwks.json`. Docker s
 
 Clients can log in through the JSON API and send `Authorization: Bearer <access-token>` on protected requests. Refresh/logout bodies use `{ "refreshToken": "<refresh-token>" }`. This service does not issue authentication cookies or implement frontend token storage.
 
-Public RSA signing keys are published exclusively by the independent Spring JWKS service. The former .NET `GET /.well-known/jwks.json` route has been removed and returns 404.
+Public RSA signing keys are published exclusively by the independent Spring JWKS service. The former .NET `GET /api/v1/jwks/user` route has been removed and returns 404.
 
 Configure public-key consumers to use the independent JWKS URL and enforce signature, issuer, audience, expiration, and their own authorization rules. Consumers never need the private signing key. .NET does not require a local public PEM.
 
@@ -445,3 +445,7 @@ Valid database options and RSA keys are required before HTTP starts. A later SQL
 | Container cannot read keys or write logs | Check runtime mounts and permissions for the non-root app user |
 
 Environment-specific SQL/Flyway versions, infrastructure startup commands, key provisioning, gateway routing, and frontend integration must be confirmed in the parent application repository.
+
+The User JWKS endpoint is an explicit trust boundary. Keep the configured issuer
+and audience checks; do not accept Learning keys or choose a key endpoint from
+unverified token claims. This deployment leaves Learning ownership unconfigured.

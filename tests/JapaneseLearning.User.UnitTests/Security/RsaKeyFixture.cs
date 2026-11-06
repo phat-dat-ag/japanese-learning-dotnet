@@ -48,14 +48,14 @@ public sealed class RsaKeyFixture : IAsyncLifetime
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         _server = builder.Build();
-        _server.MapGet("/.well-known/jwks.json", () =>
+        _server.MapGet("/api/v1/jwks/user", () =>
         {
             Interlocked.Increment(ref Requests);
             return Unavailable ? Results.StatusCode(503) : Results.Text(PublishedJwks, "application/json");
         });
         await _server.StartAsync();
         JwksUrl = _server.Services.GetRequiredService<IServer>().Features
-            .Get<IServerAddressesFeature>()!.Addresses.Single() + "/.well-known/jwks.json";
+            .Get<IServerAddressesFeature>()!.Addresses.Single() + "/api/v1/jwks/user";
     }
 
     public async Task DisposeAsync()
