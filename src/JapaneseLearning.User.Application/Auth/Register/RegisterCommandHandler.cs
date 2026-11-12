@@ -84,7 +84,7 @@ public sealed class RegisterCommandHandler
             user,
             cancellationToken);
 
-        _logger.LogInformation(new EventId(2002, "RegistrationSucceeded"), "RegistrationSucceeded for {UserId}", user.Id);
+        _logger.LogInformation(new EventId(2002, "RegistrationSucceeded"), "RegistrationSucceeded");
 
         return new RegisterResponse(
             user.Id,

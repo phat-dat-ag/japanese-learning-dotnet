@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Routing;
 
@@ -55,7 +54,7 @@ public sealed class CorrelationIdMiddleware(
         using var scope = logger.BeginScope(new Dictionary<string, object?>
         {
             ["CorrelationId"] = correlationId,
-            ["TraceId"] = traceId,
+            ["TraceId"] = Activity.Current?.TraceId is { } active && active != default ? active.ToString() : null,
             ["SpanId"] = Activity.Current?.SpanId.ToString() ?? string.Empty,
             ["ParentSpanId"] = Activity.Current?.ParentSpanId.ToString() ?? string.Empty,
             ["RequestId"] = requestId,
@@ -68,8 +67,6 @@ public sealed class CorrelationIdMiddleware(
             ["HandlerType"] = action?.ControllerTypeInfo.FullName,
             ["NetworkProtocol"] = context.Request.Protocol,
             ["RequestScheme"] = context.Request.Scheme,
-            ["PeerAddress"] = context.Connection.RemoteIpAddress?.ToString(),
-            ["PeerPort"] = context.Connection.RemotePort,
             // This header is caller-supplied metadata, never an authentication decision.
             ["ClaimedCallerService"] = claimedCaller
         });
@@ -100,10 +97,6 @@ public sealed class CorrelationIdMiddleware(
             // The central handler owns the single ERROR diagnostic; summaries use WARN for failures.
             var level = status >= 400 || duration >= _slowRequestMilliseconds ? LogLevel.Warning : LogLevel.Information;
             // Query strings, headers and bodies are deliberately excluded.
-            var userId = context.User.Identity?.IsAuthenticated == true &&
-                Guid.TryParse(context.User.FindFirstValue(ClaimTypes.NameIdentifier), out var id)
-                    ? (Guid?)id : null;
-           
             using var completion = logger.BeginScope(new Dictionary<string, object?>
             {
                 ["Outcome"] = cancelled ? "cancelled" : status >= 400 ? "failure" : "success",
@@ -118,8 +111,8 @@ public sealed class CorrelationIdMiddleware(
             });
             
             logger.Log(level, new EventId(1000, "HttpRequestCompleted"),
-                "HTTP request completed: {RequestMethod} {RequestPath} with status {StatusCode} in {ElapsedMilliseconds}ms for {UserId}",
-                context.Request.Method, route, status, duration, userId);
+                "HTTP request completed: {RequestMethod} {RequestPath} with status {StatusCode} in {ElapsedMilliseconds}ms",
+                context.Request.Method, route, status, duration);
         }
     }
 

@@ -50,7 +50,7 @@ public sealed class DetailedLoggingTests
         foreach (var entry in sink.Events)
         {
             Assert.Equal(expected, Scalar(entry, "ClaimedCallerService"));
-            Assert.Equal("10.0.0.8", Scalar(entry, "PeerAddress"));
+            Assert.False(entry.Properties.ContainsKey("PeerAddress"));
             Assert.Equal("/users/{id}", Scalar(entry, "RequestRoute"));
             Assert.Equal("4bf92f3577b34da6a3ce929d0e0e4736", Scalar(entry, "TraceId"));
             Assert.Equal("00f067aa0ba902b7", Scalar(entry, "ParentSpanId"));

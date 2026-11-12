@@ -95,7 +95,7 @@ public sealed class LoginCommandHandler
             refreshToken,
             cancellationToken);
 
-        _logger.LogInformation(new EventId(2001, "LoginSucceeded"), "LoginSucceeded for {UserId}", user.Id);
+        _logger.LogInformation(new EventId(2001, "LoginSucceeded"), "LoginSucceeded");
 
         return new LoginResponse(
             tokens.AccessToken,

@@ -2,6 +2,7 @@ using Serilog.Events;
 using Serilog.Formatting;
 using Serilog.Formatting.Json;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace JapaneseLearning.User.Api.Common.Logging;
 
@@ -15,7 +16,8 @@ public sealed class SafeJsonFormatter : ITextFormatter
         // Framework/provider exceptions follow the same policy as application exceptions.
         var safeEvent = new LogEvent(logEvent.Timestamp, logEvent.Level, null,
             logEvent.MessageTemplate,
-            logEvent.Properties.Select(property => new LogEventProperty(property.Key, property.Value)),
+            logEvent.Properties.Where(property => !PrivateProperty(property.Key))
+                .Select(property => new LogEventProperty(property.Key, property.Value)),
             logEvent.TraceId ?? default, logEvent.SpanId ?? default);
        
         if (logEvent.Properties.TryGetValue("EventId", out var eventId) && eventId is StructureValue eventFields)
@@ -32,8 +34,18 @@ public sealed class SafeJsonFormatter : ITextFormatter
             safeEvent.AddOrUpdateProperty(new LogEventProperty("ExceptionDetails",
                 ToProperty(JsonSerializer.SerializeToElement(SafeExceptionDetails.Create(exception)))));
         }
-        _formatter.Format(safeEvent, output);
+        using var native = new StringWriter();
+        _formatter.Format(safeEvent, native);
+        var record = JsonNode.Parse(native.ToString())!.AsObject();
+        CanonicalLogFields.Add(record);
+        output.Write(record.ToJsonString());
+        output.WriteLine();
     }
+
+    private static bool PrivateProperty(string key) => key.ToLowerInvariant() is
+        "userid" or "email" or "password" or "accesstoken" or "refreshtoken" or
+        "authorization" or "cookie" or "connectionstring" or "privatekey" or
+        "peeraddress" or "peerport" or "payload" or "body" or "headers" or "request" or "response";
 
     private static LogEventPropertyValue ToProperty(JsonElement element) => element.ValueKind switch
     {
@@ -42,6 +54,8 @@ public sealed class SafeJsonFormatter : ITextFormatter
         JsonValueKind.Array => new SequenceValue(element.EnumerateArray().Select(ToProperty)),
         JsonValueKind.Number => new ScalarValue(element.GetInt64()),
         JsonValueKind.String => new ScalarValue(element.GetString()),
+        JsonValueKind.True => new ScalarValue(true),
+        JsonValueKind.False => new ScalarValue(false),
         _ => new ScalarValue(null)
     };
 }
