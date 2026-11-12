@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Moq;
 
 namespace JapaneseLearning.User.UnitTests.Health;
@@ -34,6 +35,8 @@ public sealed class HealthEndpointTests(RsaKeyFixture fixture) : IClassFixture<R
             ContentRootPath = fixture.DirectoryPath,
             EnvironmentName = "Testing"
         });
+        // Unit hosts must not write to the machine-wide Windows Event Log.
+        builder.Logging.ClearProviders();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {

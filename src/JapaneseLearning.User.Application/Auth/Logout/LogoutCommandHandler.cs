@@ -72,6 +72,6 @@ public sealed class LogoutCommandHandler
             DateTime.UtcNow,
             cancellationToken);
 
-        _logger.LogInformation(new EventId(2004, "LogoutSucceeded"), "LogoutSucceeded for {UserId}", existingToken.UserId);
+        _logger.LogInformation(new EventId(2004, "LogoutSucceeded"), "LogoutSucceeded");
     }
 }

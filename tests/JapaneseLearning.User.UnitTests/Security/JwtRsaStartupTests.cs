@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 
@@ -77,6 +78,8 @@ public sealed class JwtRsaStartupTests(RsaKeyFixture fixture) : IClassFixture<Rs
             ContentRootPath = fixture.DirectoryPath,
             EnvironmentName = "Testing"
         });
+        // Unit hosts must not write to the machine-wide Windows Event Log.
+        builder.Logging.ClearProviders();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         var configuration = new Dictionary<string, string?>
         {

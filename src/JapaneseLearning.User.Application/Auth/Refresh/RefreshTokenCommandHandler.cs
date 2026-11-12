@@ -110,7 +110,7 @@ public sealed class RefreshTokenCommandHandler
             newRefreshToken,
             cancellationToken);
 
-        _logger.LogInformation(new EventId(2003, "RefreshTokenRotated"), "RefreshTokenRotated for {UserId}", user.Id);
+        _logger.LogInformation(new EventId(2003, "RefreshTokenRotated"), "RefreshTokenRotated");
 
         return new RefreshTokenResponse(
             tokens.AccessToken,

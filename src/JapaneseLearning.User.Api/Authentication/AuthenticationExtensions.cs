@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using JapaneseLearning.User.Api.Common.Logging;
 using Microsoft.Extensions.Options;
 using JapaneseLearning.User.Infrastructure.Configuration;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -13,11 +14,13 @@ public static class AuthenticationExtensions
     public static IServiceCollection AddJwtAuthentication(
         this IServiceCollection services)
     {
+        services.AddHttpContextAccessor();
+        services.AddTransient<JwksLoggingHandler>();
         services.AddHttpClient("jwt-jwks", client =>
         {
             client.Timeout = TimeSpan.FromSeconds(5);
             client.MaxResponseContentBufferSize = 1024 * 1024;
-        });
+        }).RemoveAllLoggers().AddHttpMessageHandler<JwksLoggingHandler>();
 
         services
             .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)

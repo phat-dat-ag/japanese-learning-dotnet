@@ -41,7 +41,7 @@ public sealed class LoggingBehavior<TRequest, TResponse>(
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             using var outcome = logger.BeginScope(new Dictionary<string, object> { ["Outcome"] = "cancelled" });
-            logger.LogInformation(new EventId(1103, "ApplicationOperationCancelled"),
+            logger.LogWarning(new EventId(1103, "ApplicationOperationCancelled"),
                 "Cancelled {RequestName} after {ElapsedMilliseconds}ms",
                 requestName, Stopwatch.GetElapsedTime(started).TotalMilliseconds);
             throw;

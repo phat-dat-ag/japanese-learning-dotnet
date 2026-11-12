@@ -20,7 +20,7 @@ namespace JapaneseLearning.User.UnitTests.Logging;
 public sealed class AuthenticationLoggingTests
 {
     [Fact]
-    public async Task SuccessEventsContainUserIdAndPreserveAuthenticationResults()
+    public async Task SuccessEventsExcludeUserIdAndPreserveAuthenticationResults()
     {
         using var setup = new Setup();
         var user = setup.User;
@@ -53,7 +53,7 @@ public sealed class AuthenticationLoggingTests
         Assert.All(setup.Events, entry =>
         {
             Assert.Equal(LogEventLevel.Information, entry.Level);
-            Assert.True(entry.Properties.ContainsKey("UserId"));
+            Assert.False(entry.Properties.ContainsKey("UserId"));
             Assert.True(entry.Properties.ContainsKey("EventId"));
         });
         setup.AssertNoSecrets();
