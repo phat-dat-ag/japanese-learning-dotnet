@@ -32,6 +32,7 @@ try
 
     builder.Services.AddApiErrorHandling();
     builder.Services.AddSingleton<ApplicationMetrics>();
+    builder.Services.AddServiceTracing(builder.Configuration);
 
     builder.Services.AddApplication();
 
