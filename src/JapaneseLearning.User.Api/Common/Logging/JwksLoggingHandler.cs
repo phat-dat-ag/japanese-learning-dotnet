@@ -1,10 +1,12 @@
 using System.Diagnostics;
+using JapaneseLearning.User.Api.Observability;
 
 namespace JapaneseLearning.User.Api.Common.Logging;
 
 // Only attached to the existing JWKS client. Never retries or inspects keys/tokens/bodies.
 public sealed class JwksLoggingHandler(
-    IHttpContextAccessor accessor, ILogger<JwksLoggingHandler> logger) : DelegatingHandler
+    IHttpContextAccessor accessor, ILogger<JwksLoggingHandler> logger,
+    ApplicationMetrics? metrics = null) : DelegatingHandler
 {
     protected override async Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request, CancellationToken cancellationToken)
@@ -55,6 +57,7 @@ public sealed class JwksLoggingHandler(
         }
         finally
         {
+            metrics?.JwksCompleted(outcome, Stopwatch.GetElapsedTime(started).TotalSeconds);
             using var terminal = logger.BeginScope(new Dictionary<string, object?>
             {
                 ["Outcome"] = outcome,

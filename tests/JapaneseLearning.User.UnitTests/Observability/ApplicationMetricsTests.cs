@@ -30,6 +30,8 @@ public sealed class ApplicationMetricsTests
         app.MapGet("/forbidden", () => Results.StatusCode(403));
         app.MapGet("/failure", (Func<string>)(() => throw new InvalidOperationException("credential-sentinel")));
         app.MapGet("/health/live", () => "Healthy");
+        app.MapPost("/api/auth/login", () => Results.Ok());
+        app.MapPost("/api/auth/refresh", () => Results.Unauthorized());
         app.MapApplicationMetrics();
         await app.StartAsync();
         try
@@ -43,7 +45,7 @@ public sealed class ApplicationMetricsTests
                 Assert.Equal(status, (int)response.StatusCode);
                 Assert.Equal("metrics-correlation-sentinel", response.Headers.GetValues("X-Correlation-ID").Single());
             }
-            for (var index = 0; index < 20; index++)
+            for (var index = 0; index < 10000; index++)
             {
                 using var request = new HttpRequestMessage(new HttpMethod("SECRET" + index),
                     "/unmatched-credential-sentinel/" + index);
@@ -51,6 +53,8 @@ public sealed class ApplicationMetricsTests
                 Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
             }
             await client.GetAsync("/health/live");
+            using var login = await client.PostAsync("/api/auth/login", null);
+            using var refresh = await client.PostAsync("/api/auth/refresh", null);
             using var scrape = new HttpRequestMessage(HttpMethod.Get, "/metrics");
             scrape.Headers.Add("Accept", "application/openmetrics-text; version=1.0.0");
             using var result = await client.SendAsync(scrape);
@@ -59,13 +63,20 @@ public sealed class ApplicationMetricsTests
             Assert.Contains("http_requests_received_total{http_method=\"GET\",route=\"me\",code=\"401\"} 1", text);
             Assert.Contains("code=\"403\"", text);
             Assert.Contains("code=\"500\"", text);
-            Assert.Contains("http_method=\"OTHER\",route=\"other\",code=\"404\"} 20", text);
+            Assert.Contains("http_method=\"OTHER\",route=\"other\",code=\"404\"} 10000", text);
+            Assert.Contains("app_security_events_total{operation=\"login\",outcome=\"success\"} 1", text);
+            Assert.Contains("app_security_events_total{operation=\"refresh\",outcome=\"unauthenticated\"} 1", text);
+            Assert.Contains("app_security_events_total{operation=\"authorization\",outcome=\"denied\"} 1", text);
+            Assert.Matches("le=\"2(?:\\.0)?\"", text);
+            Assert.Contains("http_requests_in_progress{http_method=\"OTHER\",route=\"other\"} 0", text);
+            Assert.True(text.Split('\n').Count(line => line.Length > 0 && line[0] != '#') < 5000);
             Assert.Contains("http_request_duration_seconds_bucket", text);
             Assert.Contains("process_working_set_bytes", text);
             Assert.Contains("dotnet_collection_count_total", text);
             foreach (var sensitive in new[] { "credential-sentinel", "metrics-correlation-sentinel", "SECRET",
                          "trace_id", "span_id", "user_id", "password", "http_method=\"GET\",route=\"other\",code=\"200\"" })
                 Assert.DoesNotContain(sensitive, text);
+            await File.WriteAllTextAsync(Path.Combine(AppContext.BaseDirectory, "p04-exposition.prom"), text);
         }
         finally { await app.StopAsync(); }
     }
