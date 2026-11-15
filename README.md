@@ -269,7 +269,7 @@ The database must already exist. Point the environment's Flyway SQL location at 
 
 ## API documentation
 
-Swagger UI is at `/swagger`, with JSON at `/swagger/v1/swagger.json`. In the current source, Swagger is enabled in **all environments** because its Development guard is commented out.
+Swagger UI is at `/swagger`, with JSON at `/swagger/v1/swagger.json`. Swagger is enabled only when the ASP.NET host environment is Development. Telemetry environment labels do not enable it.
 
 | Endpoint | Access | Success |
 | --- | --- | --- |
@@ -449,3 +449,20 @@ Environment-specific SQL/Flyway versions, infrastructure startup commands, key p
 The User JWKS endpoint is an explicit trust boundary. Keep the configured issuer
 and audience checks; do not accept Learning keys or choose a key endpoint from
 unverified token claims. This deployment leaves Learning ownership unconfigured.
+
+### Environment template coverage
+
+`.env.example` / ignored `.env` document runtime, database, signing, JWT, log
+rotation/levels and all tracing options. ASP.NET does not load dotenv: export the
+reviewed values through the native launcher/IDE, or use parent Compose's explicit
+`.env.user-api` service file. Supply a real private-key path and database password;
+leave `Database__ConnectionString` empty with split settings. A connection-string
+alternative requires clearing all split fields. Keep `DOTNET_ENVIRONMENT` and
+`ASPNETCORE_ENVIRONMENT` aligned; use `--no-launch-profile` when explicit native
+environment/listener settings should take precedence over launchSettings.
+`Tracing__Environment` labels both logs and traces, independently of the ASP.NET
+host mode, so container DEV telemetry is `development` without enabling Swagger.
+Root Compose overrides database/JWT wiring and tracing endpoint/sample/environment;
+service log levels remain configurable, defaulting to Information. The parent
+[environment guide](../README.md#environment-configuration) documents isolated local
+deployments, the shared local JWT trust domain and static validation commands.

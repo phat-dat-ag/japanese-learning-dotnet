@@ -19,7 +19,7 @@ public static class SerilogConfiguration
             .ReadFrom.Configuration(configuration)
             .Enrich.FromLogContext()
             .Enrich.WithProperty("ServiceName", environment.ApplicationName)
-            .Enrich.WithProperty("Environment", environment.EnvironmentName)
+            .Enrich.WithProperty("Environment", configuration["Tracing:Environment"] ?? environment.EnvironmentName)
             .Enrich.WithProperty("ServiceVersion", typeof(SerilogConfiguration).Assembly.GetName().Version?.ToString() ?? "unknown")
             .Enrich.WithProperty("ServiceInstanceId", Environment.MachineName)
             .Enrich.WithProperty("DeploymentVersion", configuration["Observability:ServiceVersion"] ?? "unknown")

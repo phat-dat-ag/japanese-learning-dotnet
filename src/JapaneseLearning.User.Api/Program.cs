@@ -10,7 +10,8 @@ using System.Text.Json.Serialization;
 
 Log.Logger = new LoggerConfiguration()
     .Enrich.WithProperty("ServiceName", "JapaneseLearning.User.Api")
-    .Enrich.WithProperty("Environment", Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT")
+    .Enrich.WithProperty("Environment", Environment.GetEnvironmentVariable("Tracing__Environment")
+        ?? Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT")
         ?? Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? Environments.Production)
     .WriteTo.Console(new SafeJsonFormatter())
     .CreateBootstrapLogger();

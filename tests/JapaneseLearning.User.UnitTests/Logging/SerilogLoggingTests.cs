@@ -107,8 +107,10 @@ public sealed class SerilogLoggingTests
         Assert.All(sink.Events, entry => Assert.DoesNotContain("credential-sentinel", Format(entry)));
     }
 
-    [Fact]
-    public void FilesAreJsonRetainedByAgeAndCountAndRolledBySize()
+    [Theory]
+    [InlineData(null, "Production")]
+    [InlineData("development", "development")]
+    public void FilesAreJsonRetainedByAgeAndCountAndRolledBySize(string? telemetryEnvironment, string expectedEnvironment)
     {
         var directory = Path.Combine(Path.GetTempPath(), "user-logging-tests-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
@@ -123,6 +125,7 @@ public sealed class SerilogLoggingTests
                 ["LogFiles:FileSizeLimitBytes"] = "1024",
                 ["LogFiles:RetainedFileCountLimit"] = "3",
                 ["Serilog:MinimumLevel:Default"] = "Information",
+                ["Tracing:Environment"] = telemetryEnvironment,
                 ["Serilog:MinimumLevel:Override:Microsoft"] = "Warning"
             }).Build();
             var environment = Mock.Of<IHostEnvironment>(value =>
@@ -151,7 +154,8 @@ public sealed class SerilogLoggingTests
                 var root = document.RootElement;
                 Assert.True(root.TryGetProperty("Timestamp", out _));
                 Assert.Equal("Information", root.GetProperty("Level").GetString());
-                Assert.Equal("Production", root.GetProperty("Properties").GetProperty("Environment").GetString());
+                Assert.Equal(expectedEnvironment, root.GetProperty("Properties").GetProperty("Environment").GetString());
+                Assert.Equal(expectedEnvironment.ToLowerInvariant(), root.GetProperty("environment").GetString());
                 Assert.Equal("JapaneseLearning.User.Api", root.GetProperty("Properties").GetProperty("ServiceName").GetString());
                 Assert.DoesNotContain("credential-sentinel", line);
             }
