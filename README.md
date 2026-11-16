@@ -1,5 +1,14 @@
 # Japanese Learning User Service
 
+For the complete Japanese Learning Docker stack, follow the parent repository's
+[clone and first-time setup guide](../README.md#getting-started). It initializes
+root service dotenv inputs and provisions matching JWT/P07 files before startup.
+This repository's `.env.example` is for native/service configuration; it is not
+loaded automatically by every framework and is not a substitute for the parent
+Compose setup. If cloned standalone, obtain the [root repository](https://github.com/phat-dat-ag/japanese-learning);
+the relative guide link requires the submodule checkout layout.
+
+
 The .NET backend submodule of the Japanese Learning application provides account registration, login, access and refresh tokens, and claim-based user identity. Angular is the frontend; Quarkus owns vocabulary, flashcards, and the API Gateway. This repository contains the user service, not those clients or services.
 
 Implemented capabilities include active-user checks, User/Admin roles, RS256 access tokens, refresh-token rotation and logout, remote JWKS verification, SQL Server persistence, structured logs, health probes, and Prometheus metrics. Email verification, password reset, account/profile editing, role administration, and OpenID Connect discovery are not implemented.
